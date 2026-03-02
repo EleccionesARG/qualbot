@@ -6,3 +6,14 @@ startCommand = "gunicorn server:app --bind 0.0.0.0:$PORT --workers 1 --timeout 1
 healthcheckPath = "/health"
 healthcheckTimeout = 60
 restartPolicyType = "ON_FAILURE"
+```
+
+---
+
+## Checklist antes de commitear
+
+**En GitHub:** reemplazá los 5 archivos con estos nuevos.
+
+**En Railway → Variables**, agregá:
+```
+ANTHROPIC_API_KEY    →  tu key sk-ant-...
