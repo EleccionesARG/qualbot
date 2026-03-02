@@ -18,17 +18,30 @@ def upload_report(pdf_path, filename):
         scopes=["https://www.googleapis.com/auth/drive"]
     )
     service = build("drive", "v3", credentials=creds)
-    meta    = {"name": filename, "parents": [folder_id]}
-    media   = MediaFileUpload(pdf_path, mimetype="application/pdf")
-    f       = service.files().create(
-                  body=meta,
-                  media_body=media,
-                  fields="id,webViewLink",
-                  supportsAllDrives=True
-              ).execute()
-    service.permissions().create(
-        fileId=f["id"],
-        body={"type": "anyone", "role": "reader"},
-        supportsAllDrives=True
+
+    meta  = {
+        "name": filename,
+        "parents": [folder_id],
+        "driveId": folder_id
+    }
+    media = MediaFileUpload(pdf_path, mimetype="application/pdf")
+
+    f = service.files().create(
+        body=meta,
+        media_body=media,
+        fields="id,webViewLink",
+        supportsAllDrives=True,
+        includeItemsFromAllDrives=True
     ).execute()
+
+    try:
+        service.permissions().create(
+            fileId=f["id"],
+            body={"type": "anyone", "role": "reader"},
+            supportsAllDrives=True
+        ).execute()
+    except Exception as e:
+        print(f"Permiso no aplicado: {e}")
+
+    print(f"Subido a Drive: {f.get('webViewLink', '')}")
     return f.get("webViewLink", "")
