@@ -14,7 +14,11 @@ def analyze_transcript(title, speakers, blocks, summary, topics):
     Envía la transcripción a Claude y obtiene análisis emocional profundo
     orientado a investigación cualitativa.
     """
-
+def analyze_transcript(title, speakers, blocks, summary, topics):
+    global client
+    if client is None:
+        client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+        
     # Formatear transcripción para Claude
     transcript_text = ""
     for block in blocks:
