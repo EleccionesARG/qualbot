@@ -14,7 +14,8 @@ C_LIGHT  = colors.HexColor("#f5f5fa")
 C_WHITE  = colors.white
 
 def st(name, **kw):
-    return ParagraphStyle(name, fontName="Helvetica", **kw)
+    kw.setdefault("fontName", "Helvetica")
+    return ParagraphStyle(name, **kw)
 
 def generate_pdf_report(session_id, title, date, speakers, topics, summary, analysis, readai_url=""):
     os.makedirs("reportes", exist_ok=True)
