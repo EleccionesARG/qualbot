@@ -7,7 +7,7 @@ import os
 import json
 import anthropic
 
-client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+client = None
 
 def analyze_transcript(title, speakers, blocks, summary, topics):
     """
