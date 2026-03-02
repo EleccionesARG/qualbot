@@ -6,7 +6,7 @@ def upload_report(pdf_path, filename):
     creds_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "")
 
     if not folder_id or not creds_json:
-        print("⚠️  Drive no configurado, omitiendo subida")
+        print("Drive no configurado, omitiendo subida")
         return ""
 
     from google.oauth2 import service_account
@@ -26,15 +26,3 @@ def upload_report(pdf_path, filename):
         fileId=f["id"], body={"type": "anyone", "role": "reader"}
     ).execute()
     return f.get("webViewLink", "")
-```
-
----
-
-### 📄 `requirements.txt`
-```
-flask==3.0.3
-anthropic==0.34.0
-reportlab==4.2.2
-google-auth==2.34.0
-google-api-python-client==2.143.0
-gunicorn==23.0.0
