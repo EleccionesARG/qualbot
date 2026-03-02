@@ -13,25 +13,20 @@ def upload_report(pdf_path, filename):
     from googleapiclient.discovery import build
     from googleapiclient.http import MediaFileUpload
 
-    creds   = service_account.Credentials.from_service_account_info(
+    creds = service_account.Credentials.from_service_account_info(
         json.loads(creds_json),
         scopes=["https://www.googleapis.com/auth/drive"]
     )
     service = build("drive", "v3", credentials=creds)
 
-    meta  = {
-        "name": filename,
-        "parents": [folder_id],
-        "driveId": folder_id
-    }
+    meta  = {"name": filename, "parents": [folder_id]}
     media = MediaFileUpload(pdf_path, mimetype="application/pdf")
 
     f = service.files().create(
         body=meta,
         media_body=media,
         fields="id,webViewLink",
-        supportsAllDrives=True,
-        includeItemsFromAllDrives=True
+        supportsAllDrives=True
     ).execute()
 
     try:
