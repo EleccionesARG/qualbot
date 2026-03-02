@@ -15,14 +15,20 @@ def upload_report(pdf_path, filename):
 
     creds   = service_account.Credentials.from_service_account_info(
         json.loads(creds_json),
-        scopes=["https://www.googleapis.com/auth/drive.file"]
+        scopes=["https://www.googleapis.com/auth/drive"]
     )
     service = build("drive", "v3", credentials=creds)
     meta    = {"name": filename, "parents": [folder_id]}
     media   = MediaFileUpload(pdf_path, mimetype="application/pdf")
-    f       = service.files().create(body=meta, media_body=media,
-                                      fields="id,webViewLink").execute()
+    f       = service.files().create(
+                  body=meta,
+                  media_body=media,
+                  fields="id,webViewLink",
+                  supportsAllDrives=True
+              ).execute()
     service.permissions().create(
-        fileId=f["id"], body={"type": "anyone", "role": "reader"}
+        fileId=f["id"],
+        body={"type": "anyone", "role": "reader"},
+        supportsAllDrives=True
     ).execute()
     return f.get("webViewLink", "")
