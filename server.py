@@ -6,6 +6,9 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
+# Cache simple para combinar análisis de texto y video de la misma sesión
+session_cache = {}
+
 # ── Health check ───────────────────────────────────────────────────────────────
 @app.route("/", methods=["GET"])
 def health():
@@ -42,9 +45,25 @@ def readai_webhook():
 
         analysis   = analyze_transcript(meeting_title, speakers, blocks, summary, topics)
         session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-        pdf_path   = generate_pdf_report(session_id, meeting_title, meeting_date,
-                                          speakers, topics, summary, analysis, report_url)
-        drive_url  = upload_report(pdf_path, f"QualBot_{meeting_title}_{meeting_date}.pdf")
+
+        # Guardar en cache por si llega el video después
+        session_cache[meeting_title] = {
+            "session_id":    session_id,
+            "meeting_title": meeting_title,
+            "meeting_date":  meeting_date,
+            "speakers":      speakers,
+            "topics":        topics,
+            "summary":       summary,
+            "analysis":      analysis,
+            "report_url":    report_url,
+            "blocks":        blocks,
+        }
+
+        # Generar reporte solo de texto por ahora
+        pdf_path  = generate_pdf_report(session_id, meeting_title, meeting_date,
+                                         speakers, topics, summary, analysis, report_url,
+                                         video_analysis=None)
+        drive_url = upload_report(pdf_path, f"QualBot_{meeting_title}_{meeting_date}.pdf")
 
         print(f"✅ Reporte de texto listo: {drive_url}")
         return jsonify({"status": "ok", "drive_url": drive_url}), 200
@@ -79,16 +98,15 @@ def zoom_webhook():
 
 
 def process_zoom_recording(data):
-    """Procesa la grabación de Zoom en background"""
+    """Descarga video, extrae frames, analiza con Claude Vision y actualiza el reporte"""
     try:
         from zoom_downloader import download_recording
-        from video_analyzer import analyze_video, summarize_emotions, detect_dissonance
+        from video_analyzer import extract_frames, analyze_video_with_claude
         from drive_uploader import upload_report
-        from report_generator_video import generate_video_report
+        from report_generator import generate_pdf_report
 
         payload         = data.get("payload", {})
         obj             = payload.get("object", {})
-        meeting_id      = obj.get("id", "")
         meeting_topic   = obj.get("topic", "Focus Group")
         recording_files = obj.get("recording_files", [])
 
@@ -101,7 +119,7 @@ def process_zoom_recording(data):
             mp4_file = next((f for f in recording_files if f.get("file_type") == "MP4"), None)
 
         if not mp4_file:
-            print("⚠️  No se encontró archivo MP4 en la grabación")
+            print("⚠️  No se encontró archivo MP4")
             return
 
         download_url = mp4_file.get("download_url", "")
@@ -110,26 +128,45 @@ def process_zoom_recording(data):
         os.makedirs("recordings", exist_ok=True)
         video_path = f"recordings/zoom_{session_id}.mp4"
 
+        # 1. Descargar video
         download_recording(download_url, video_path)
 
-        print("🧠 Analizando expresiones faciales...")
-        detections, duration_s = analyze_video(video_path)
-        distribution, timeline = summarize_emotions(detections, duration_s)
+        # 2. Extraer frames
+        print("🎬 Extrayendo frames...")
+        frames, duration_s = extract_frames(video_path, n_frames=24)
 
-        print("📄 Generando reporte de video...")
-        pdf_path = generate_video_report(
+        # 3. Buscar datos de transcripción en cache
+        cached = session_cache.get(meeting_topic, {})
+        blocks = cached.get("blocks", [])
+
+        # 4. Analizar con Claude Vision
+        video_analysis = analyze_video_with_claude(frames, blocks, meeting_topic)
+
+        # 5. Generar reporte unificado
+        print("📄 Generando reporte unificado texto + video...")
+        speakers     = cached.get("speakers", [])
+        topics       = cached.get("topics", [])
+        summary      = cached.get("summary", "")
+        analysis     = cached.get("analysis", {})
+        meeting_date = cached.get("meeting_date", str(datetime.now().date()))
+        report_url   = cached.get("report_url", "")
+
+        pdf_path = generate_pdf_report(
             session_id=session_id,
             title=meeting_topic,
-            distribution=distribution,
-            timeline=timeline,
-            dissonances=[],
-            total_detections=len(detections),
-            duration_s=duration_s
+            date=meeting_date,
+            speakers=speakers,
+            topics=topics,
+            summary=summary,
+            analysis=analysis,
+            readai_url=report_url,
+            video_analysis=video_analysis
         )
 
-        drive_url = upload_report(pdf_path, f"QualBot_Video_{meeting_topic}_{session_id}.pdf")
-        print(f"✅ Reporte de video en Drive: {drive_url}")
+        drive_url = upload_report(pdf_path, f"QualBot_Completo_{meeting_topic}_{session_id}.pdf")
+        print(f"✅ Reporte unificado en Drive: {drive_url}")
 
+        # Limpiar
         os.remove(video_path)
         print("🧹 Video temporal eliminado")
 
@@ -138,22 +175,88 @@ def process_zoom_recording(data):
         print(f"❌ Error procesando video: {e}")
 
 
-# ── Trigger manual para procesar grabación de Zoom ────────────────────────────
+# ── Listar grabaciones recientes ───────────────────────────────────────────────
+@app.route("/zoom-recordings", methods=["GET"])
+def list_zoom_recordings():
+    import requests as req
+    try:
+        account_id    = os.environ["ZOOM_ACCOUNT_ID"]
+        client_id     = os.environ["ZOOM_CLIENT_ID"]
+        client_secret = os.environ["ZOOM_CLIENT_SECRET"]
+
+        token_resp = req.post(
+            "https://zoom.us/oauth/token",
+            params={"grant_type": "account_credentials", "account_id": account_id},
+            auth=(client_id, client_secret)
+        )
+        token = token_resp.json()["access_token"]
+
+        from datetime import timedelta
+        today    = datetime.now().strftime("%Y-%m-%d")
+        week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+
+        resp = req.get(
+            "https://api.zoom.us/v2/users/me/recordings",
+            headers={"Authorization": f"Bearer {token}"},
+            params={"from": week_ago, "to": today}
+        )
+        data = resp.json()
+
+        meetings = []
+        for m in data.get("meetings", []):
+            meetings.append({
+                "uuid":       m.get("uuid"),
+                "id":         m.get("id"),
+                "topic":      m.get("topic"),
+                "start_time": m.get("start_time"),
+                "files":      [f.get("file_type") for f in m.get("recording_files", [])]
+            })
+
+        return jsonify({"meetings": meetings}), 200
+
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+# ── Trigger manual por UUID ────────────────────────────────────────────────────
 @app.route("/process-zoom", methods=["GET"])
 def process_zoom_manual():
-    from zoom_downloader import get_recording_files
-    meeting_id = request.args.get("id", "")
-    if not meeting_id:
+    import requests as req
+    meeting_uuid = request.args.get("id", "")
+    if not meeting_uuid:
         return jsonify({"error": "Falta el parametro id"}), 400
     try:
-        recordings = get_recording_files(meeting_id)
+        account_id    = os.environ["ZOOM_ACCOUNT_ID"]
+        client_id     = os.environ["ZOOM_CLIENT_ID"]
+        client_secret = os.environ["ZOOM_CLIENT_SECRET"]
+
+        token_resp = req.post(
+            "https://zoom.us/oauth/token",
+            params={"grant_type": "account_credentials", "account_id": account_id},
+            auth=(client_id, client_secret)
+        )
+        token = token_resp.json()["access_token"]
+
+        from urllib.parse import quote
+        uuid_encoded = quote(quote(meeting_uuid, safe=""), safe="")
+
+        resp = req.get(
+            f"https://api.zoom.us/v2/meetings/{uuid_encoded}/recordings",
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        resp.raise_for_status()
+        recordings = resp.json()
+
         threading.Thread(
             target=process_zoom_recording,
             args=({"payload": {"object": recordings}},),
             daemon=True
         ).start()
-        return jsonify({"status": "procesando", "meeting_id": meeting_id}), 200
+        return jsonify({"status": "procesando", "topic": recordings.get("topic")}), 200
+
     except Exception as e:
+        import traceback; traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 
