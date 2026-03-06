@@ -1,3 +1,4 @@
+
 import os
 import json
 import threading
@@ -6,8 +7,23 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-# Cache simple para combinar análisis de texto y video de la misma sesión
-session_cache = {}
+CACHE_DIR = "session_cache"
+
+def save_session(meeting_title, data):
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    safe_name = "".join(c if c.isalnum() or c in "-_ " else "_" for c in meeting_title)
+    path = f"{CACHE_DIR}/{safe_name}.json"
+    with open(path, "w") as f:
+        json.dump(data, f)
+    print(f"💾 Sesión guardada: {path}")
+
+def load_session(meeting_title):
+    safe_name = "".join(c if c.isalnum() or c in "-_ " else "_" for c in meeting_title)
+    path = f"{CACHE_DIR}/{safe_name}.json"
+    if os.path.exists(path):
+        with open(path) as f:
+            return json.load(f)
+    return {}
 
 # ── Health check ───────────────────────────────────────────────────────────────
 @app.route("/", methods=["GET"])
@@ -46,8 +62,8 @@ def readai_webhook():
         analysis   = analyze_transcript(meeting_title, speakers, blocks, summary, topics)
         session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-        # Guardar en cache por si llega el video después
-        session_cache[meeting_title] = {
+        # Guardar en disco para que el análisis de video lo pueda usar después
+        save_session(meeting_title, {
             "session_id":    session_id,
             "meeting_title": meeting_title,
             "meeting_date":  meeting_date,
@@ -57,9 +73,9 @@ def readai_webhook():
             "analysis":      analysis,
             "report_url":    report_url,
             "blocks":        blocks,
-        }
+        })
 
-        # Generar reporte solo de texto por ahora
+        # Generar reporte de solo texto
         pdf_path  = generate_pdf_report(session_id, meeting_title, meeting_date,
                                          speakers, topics, summary, analysis, report_url,
                                          video_analysis=None)
@@ -98,7 +114,7 @@ def zoom_webhook():
 
 
 def process_zoom_recording(data):
-    """Descarga video, extrae frames, analiza con Claude Vision y actualiza el reporte"""
+    """Descarga video, extrae frames, analiza con Claude Vision y genera reporte unificado"""
     try:
         from zoom_downloader import download_recording
         from video_analyzer import extract_frames, analyze_video_with_claude
@@ -133,10 +149,11 @@ def process_zoom_recording(data):
 
         # 2. Extraer frames
         print("🎬 Extrayendo frames...")
+        from video_analyzer import extract_frames, analyze_video_with_claude
         frames, duration_s = extract_frames(video_path, n_frames=24)
 
-        # 3. Buscar datos de transcripción en cache
-        cached = session_cache.get(meeting_topic, {})
+        # 3. Cargar datos de transcripción desde disco
+        cached = load_session(meeting_topic)
         blocks = cached.get("blocks", [])
 
         # 4. Analizar con Claude Vision
@@ -166,7 +183,6 @@ def process_zoom_recording(data):
         drive_url = upload_report(pdf_path, f"QualBot_Completo_{meeting_topic}_{session_id}.pdf")
         print(f"✅ Reporte unificado en Drive: {drive_url}")
 
-        # Limpiar
         os.remove(video_path)
         print("🧹 Video temporal eliminado")
 
