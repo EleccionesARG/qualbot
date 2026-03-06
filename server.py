@@ -1,4 +1,3 @@
-
 import os
 import json
 import threading
@@ -65,7 +64,6 @@ def zoom_webhook():
     event = data.get("event", "")
     print(f"📥 Zoom webhook: {event}")
 
-    # Validación de URL que Zoom requiere la primera vez
     if event == "endpoint.url_validation":
         token = data.get("payload", {}).get("plainToken", "")
         import hmac, hashlib
@@ -73,9 +71,7 @@ def zoom_webhook():
         encrypted = hmac.new(secret.encode(), token.encode(), hashlib.sha256).hexdigest()
         return jsonify({"plainToken": token, "encryptedToken": encrypted}), 200
 
-    # Grabación completada
     if event == "recording.completed":
-        # Procesar en background para no bloquear la respuesta
         threading.Thread(target=process_zoom_recording, args=(data,), daemon=True).start()
         return jsonify({"status": "procesando"}), 200
 
@@ -88,22 +84,20 @@ def process_zoom_recording(data):
         from zoom_downloader import download_recording
         from video_analyzer import analyze_video, summarize_emotions, detect_dissonance
         from drive_uploader import upload_report
-        from report_generator import generate_video_report
+        from report_generator_video import generate_video_report
 
-        payload      = data.get("payload", {})
-        obj          = payload.get("object", {})
-        meeting_id   = obj.get("id", "")
-        meeting_topic = obj.get("topic", "Focus Group")
+        payload         = data.get("payload", {})
+        obj             = payload.get("object", {})
+        meeting_id      = obj.get("id", "")
+        meeting_topic   = obj.get("topic", "Focus Group")
         recording_files = obj.get("recording_files", [])
 
-        # Buscar el archivo MP4 de la reunión completa
         mp4_file = next(
             (f for f in recording_files
              if f.get("file_type") == "MP4" and f.get("recording_type") == "shared_screen_with_speaker_view"),
             None
         )
         if not mp4_file:
-            # Fallback: cualquier MP4
             mp4_file = next((f for f in recording_files if f.get("file_type") == "MP4"), None)
 
         if not mp4_file:
@@ -116,31 +110,26 @@ def process_zoom_recording(data):
         os.makedirs("recordings", exist_ok=True)
         video_path = f"recordings/zoom_{session_id}.mp4"
 
-        # 1. Descargar video
         download_recording(download_url, video_path)
 
-        # 2. Analizar emociones en el video
         print("🧠 Analizando expresiones faciales...")
         detections, duration_s = analyze_video(video_path)
         distribution, timeline = summarize_emotions(detections, duration_s)
 
-        # 3. Generar reporte de video
         print("📄 Generando reporte de video...")
         pdf_path = generate_video_report(
             session_id=session_id,
             title=meeting_topic,
             distribution=distribution,
             timeline=timeline,
-            dissonances=[],  # Sin transcripción de Zoom, no hay cruce
+            dissonances=[],
             total_detections=len(detections),
             duration_s=duration_s
         )
 
-        # 4. Subir a Drive
         drive_url = upload_report(pdf_path, f"QualBot_Video_{meeting_topic}_{session_id}.pdf")
         print(f"✅ Reporte de video en Drive: {drive_url}")
 
-        # Limpiar video para ahorrar espacio
         os.remove(video_path)
         print("🧹 Video temporal eliminado")
 
@@ -148,16 +137,26 @@ def process_zoom_recording(data):
         import traceback; traceback.print_exc()
         print(f"❌ Error procesando video: {e}")
 
-@app.route("/process-zoom/<meeting_id>", methods=["GET"])
-def process_zoom_manual(meeting_id):
+
+# ── Trigger manual para procesar grabación de Zoom ────────────────────────────
+@app.route("/process-zoom", methods=["GET"])
+def process_zoom_manual():
     from zoom_downloader import get_recording_files
-    meeting_id_clean = meeting_id.replace("-", "").replace(" ", "")
+    meeting_id = request.args.get("id", "")
+    if not meeting_id:
+        return jsonify({"error": "Falta el parametro id"}), 400
     try:
-        recordings = get_recording_files(meeting_id_clean)
-        threading.Thread(target=process_zoom_recording, args=({"payload": {"object": recordings}},), daemon=True).start()
-        return jsonify({"status": "procesando", "meeting_id": meeting_id_clean}), 200
+        recordings = get_recording_files(meeting_id)
+        threading.Thread(
+            target=process_zoom_recording,
+            args=({"payload": {"object": recordings}},),
+            daemon=True
+        ).start()
+        return jsonify({"status": "procesando", "meeting_id": meeting_id}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
