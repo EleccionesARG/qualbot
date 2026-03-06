@@ -175,6 +175,8 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
     if momentos:
         story.append(h2("Momentos críticos"))
         for m in momentos:
+            if not isinstance(m, dict):
+                story.append(body(str(m))); continue
             bloque = []
             tipo      = m.get("tipo","")
             ts        = m.get("timestamp","")
@@ -277,7 +279,10 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
             story.append(h3("Temas evitados"))
             data = [["Tema","Evidencia","Posible razón"]]
             for e in evitados:
-                data.append([e.get("tema",""), e.get("evidencia",""), e.get("posible_razon","")])
+                if isinstance(e, dict):
+                    data.append([e.get("tema",""), e.get("evidencia",""), e.get("posible_razon","")])
+                else:
+                    data.append([str(e), "", ""])
             story.append(mk_table(data, [0.20, 0.42, 0.38], hdr=True))
 
         silencios = no_dicho.get("silencios_significativos", [])
@@ -285,7 +290,10 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
             story.append(Spacer(1,4)); story.append(h3("Silencios significativos"))
             data = [["Tiempo","Contexto","Interpretación"]]
             for s in silencios:
-                data.append([s.get("timestamp",""), s.get("contexto",""), s.get("interpretacion","")])
+                if isinstance(s, dict):
+                    data.append([s.get("timestamp",""), s.get("contexto",""), s.get("interpretacion","")])
+                else:
+                    data.append(["", str(s), ""])
             story.append(mk_table(data, [0.10, 0.42, 0.48], hdr=True))
 
         senales = no_dicho.get("senales_no_verbales_ignoradas", [])
@@ -293,8 +301,11 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
             story.append(Spacer(1,4)); story.append(h3("Señales no verbales ignoradas"))
             data = [["Tiempo","Lo que mostró el cuerpo","Lo que se decía","Interpretación"]]
             for s in senales:
-                data.append([s.get("timestamp",""), s.get("lo_que_mostro_el_cuerpo",""),
-                              s.get("lo_que_se_decia",""), s.get("interpretacion","")])
+                if isinstance(s, dict):
+                    data.append([s.get("timestamp",""), s.get("lo_que_mostro_el_cuerpo",""),
+                                  s.get("lo_que_se_decia",""), s.get("interpretacion","")])
+                else:
+                    data.append(["", str(s), "", ""])
             story.append(mk_table(data, [0.09, 0.28, 0.28, 0.35], hdr=True))
 
     # ── CONTRADICCIONES ───────────────────────────────────────────────────────
@@ -302,6 +313,8 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
     if contradicciones:
         story.append(h2("Contradicciones"))
         for c in contradicciones:
+            if not isinstance(c, dict):
+                story.append(body(str(c))); continue
             bloque = []
             bloque.append(mk_table([[
                 Paragraph(f"<b>{c.get('participante','')}</b>",
@@ -322,6 +335,8 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
     if temas:
         story.append(h2("Temas con carga emocional"))
         for t in temas:
+            if not isinstance(t, dict):
+                story.append(body(str(t))); continue
             bloque = []
             carga = t.get("carga","")
             color_c = {"Positiva": "#06d6a0", "Negativa": "#ef476f", "Ambivalente": "#ffd166"}.get(carga, "#6b6b8a")
