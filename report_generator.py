@@ -1,4 +1,3 @@
-
 import os
 from datetime import datetime
 from reportlab.lib.pagesizes import A4
@@ -31,11 +30,22 @@ def safe(val):
         return str(list(val.values())[0]) if val else ""
     return str(val) if val else ""
 
+S_CELL     = st("CELL",  fontSize=8, textColor=C_DARK,  leading=11)
+S_CELL_HDR = st("CELLH", fontSize=8, textColor=C_WHITE, leading=11, fontName="Helvetica-Bold")
+
+def _wrap(cell, is_hdr=False):
+    if isinstance(cell, Paragraph):
+        return cell
+    s = S_CELL_HDR if is_hdr else S_CELL
+    return Paragraph(str(cell) if cell is not None else "", s)
+
 def mk_table(data, pcts, hdr=False):
     widths = [PAGE_W * p for p in pcts]
+    wrapped = []
+    for i, row in enumerate(data):
+        is_hdr_row = (hdr and i == 0)
+        wrapped.append([_wrap(cell, is_hdr_row) for cell in row])
     style = [
-        ("FONTNAME",      (0,0), (-1,-1), "Helvetica"),
-        ("FONTSIZE",      (0,0), (-1,-1), 8),
         ("TOPPADDING",    (0,0), (-1,-1), 5),
         ("BOTTOMPADDING", (0,0), (-1,-1), 5),
         ("LEFTPADDING",   (0,0), (-1,-1), 7),
@@ -46,13 +56,11 @@ def mk_table(data, pcts, hdr=False):
     if hdr:
         style += [
             ("BACKGROUND",     (0,0),  (-1,0),  C_DARK),
-            ("TEXTCOLOR",      (0,0),  (-1,0),  C_WHITE),
-            ("FONTNAME",       (0,0),  (-1,0),  "Helvetica-Bold"),
             ("ROWBACKGROUNDS", (0,1),  (-1,-1), [colors.white, C_LIGHT]),
         ]
     else:
         style += [("BACKGROUND", (0,0), (-1,-1), C_LIGHT)]
-    t = Table(data, colWidths=widths, repeatRows=1 if hdr else 0)
+    t = Table(wrapped, colWidths=widths, repeatRows=1 if hdr else 0)
     t.setStyle(TableStyle(style))
     return t
 
@@ -205,8 +213,11 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
             story.append(h3("Momentos de presión social"))
             data = [["Tiempo","Quién presionó","Quién cedió","Descripción"]]
             for pr in presiones:
-                data.append([pr.get("timestamp",""), pr.get("quien_presiono",""),
-                              pr.get("quien_cedio",""), pr.get("descripcion","")])
+                if isinstance(pr, dict):
+                    data.append([pr.get("timestamp",""), pr.get("quien_presiono",""),
+                                  pr.get("quien_cedio",""), pr.get("descripcion","")])
+                else:
+                    data.append(["", "", "", str(pr)])
             story.append(mk_table(data, [0.10, 0.18, 0.18, 0.54], hdr=True))
 
     # ── ANALISIS DEL LENGUAJE ─────────────────────────────────────────────────
@@ -226,7 +237,10 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
             story.append(Spacer(1,4)); story.append(h3("Metáforas usadas"))
             data = [["Metáfora","Quién","Interpretación"]]
             for m in metaforas:
-                data.append([m.get("metafora",""), m.get("quien",""), m.get("interpretacion","")])
+                if isinstance(m, dict):
+                    data.append([m.get("metafora",""), m.get("quien",""), m.get("interpretacion","")])
+                else:
+                    data.append([str(m), "", ""])
             story.append(mk_table(data, [0.28, 0.14, 0.58], hdr=True))
 
         eufemismos = lenguaje.get("eufemismos_detectados", [])
@@ -234,9 +248,12 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
             story.append(Spacer(1,4)); story.append(h3("Eufemismos detectados"))
             data = [["Lo que dijeron","Lo que quisieron decir","Quién"]]
             for e in eufemismos:
-                data.append([e.get("lo_que_dijeron",""),
-                              e.get("lo_que_probablemente_quisieron_decir",""),
-                              e.get("quien","")])
+                if isinstance(e, dict):
+                    data.append([e.get("lo_que_dijeron",""),
+                                  e.get("lo_que_probablemente_quisieron_decir",""),
+                                  e.get("quien","")])
+                else:
+                    data.append([str(e), "", ""])
             story.append(mk_table(data, [0.30, 0.55, 0.15], hdr=True))
 
         frases = lenguaje.get("frases_mas_reveladoras", [])
@@ -244,8 +261,11 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
             story.append(Spacer(1,4)); story.append(h3("Frases más reveladoras"))
             data = [["Tiempo","Quién","Frase","Por qué importa"]]
             for f in frases:
-                data.append([f.get("timestamp",""), f.get("quien",""),
-                              f.get("frase",""), f.get("por_que_importa","")])
+                if isinstance(f, dict):
+                    data.append([f.get("timestamp",""), f.get("quien",""),
+                                  f.get("frase",""), f.get("por_que_importa","")])
+                else:
+                    data.append(["", "", str(f), ""])
             story.append(mk_table(data, [0.08, 0.13, 0.35, 0.44], hdr=True))
 
     # ── LO NO DICHO ───────────────────────────────────────────────────────────
