@@ -1,5 +1,8 @@
+
 import os
 import requests
+from urllib.parse import quote
+
 
 def get_zoom_token():
     """Obtiene access token de Zoom via Server-to-Server OAuth"""
@@ -38,8 +41,10 @@ def get_recording_files(meeting_id):
     token = get_zoom_token()
     headers = {"Authorization": f"Bearer {token}"}
 
+    meeting_id_encoded = quote(meeting_id, safe="")
+
     resp = requests.get(
-        f"https://api.zoom.us/v2/meetings/{meeting_id}/recordings",
+        f"https://api.zoom.us/v2/meetings/{meeting_id_encoded}/recordings",
         headers=headers
     )
     resp.raise_for_status()
