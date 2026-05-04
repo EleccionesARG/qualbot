@@ -198,6 +198,44 @@ def process_zoom_manual():
         return jsonify({"error": str(e)}), 500
 
 
+# ── Trigger manual por nombre del grupo (busca en la lista de grabaciones) ─────
+@app.route("/reprocess-meeting", methods=["GET"])
+def reprocess_meeting():
+    import requests as req
+    from datetime import timedelta
+    topic_query = request.args.get("topic", "").lower()
+    if not topic_query:
+        return jsonify({"error": "Falta ?topic=Grupo+1"}), 400
+    try:
+        token    = _zoom_token()
+        today    = datetime.now().strftime("%Y-%m-%d")
+        week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+        resp     = req.get("https://api.zoom.us/v2/users/me/recordings",
+                           headers={"Authorization": f"Bearer {token}"},
+                           params={"from": week_ago, "to": today})
+        meetings = resp.json().get("meetings", [])
+
+        # Buscar el meeting por topic
+        match = next((m for m in meetings
+                      if topic_query in m.get("topic","").lower()), None)
+        if not match:
+            available = [m.get("topic") for m in meetings]
+            return jsonify({"error": f"No encontré '{topic_query}'",
+                            "disponibles": available}), 404
+
+        topic = match.get("topic")
+        print(f"🎯 Reprocessing: {topic}")
+
+        # Armar payload igual al webhook de Zoom
+        payload = {"payload": {"object": match}}
+        threading.Thread(target=process_zoom, args=(payload,), daemon=True).start()
+        return jsonify({"status": "procesando", "topic": topic,
+                        "files": [f.get("file_type") for f in match.get("recording_files",[])]}), 200
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
 def _zoom_token():
     import requests as req
     resp = req.post("https://zoom.us/oauth/token",
