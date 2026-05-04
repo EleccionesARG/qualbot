@@ -7,17 +7,37 @@ from flask import Flask, request, jsonify
 app = Flask(__name__)
 CACHE_DIR = "session_cache"
 
+# Caché en memoria como respaldo (sobrevive redeploys dentro del mismo proceso)
+_session_memory = {}
+
 def save_session(meeting_title, data):
-    os.makedirs(CACHE_DIR, exist_ok=True)
     safe_name = "".join(c if c.isalnum() or c in "-_ " else "_" for c in meeting_title)
-    with open(f"{CACHE_DIR}/{safe_name}.json", "w") as f:
-        json.dump(data, f)
+    # Guardar en memoria (inmediato, sobrevive dentro del mismo deploy)
+    _session_memory[safe_name] = data
+    # Guardar en disco (persiste si no hay redeploy)
+    try:
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        with open(f"{CACHE_DIR}/{safe_name}.json", "w") as f:
+            json.dump(data, f)
+    except Exception as e:
+        print(f"⚠️  No se pudo guardar en disco: {e}")
     print(f"💾 Sesión guardada: {safe_name}")
 
 def load_session(meeting_title):
     safe_name = "".join(c if c.isalnum() or c in "-_ " else "_" for c in meeting_title)
+    # Primero intentar memoria
+    if safe_name in _session_memory:
+        print(f"📂 Sesión cargada desde memoria: {safe_name}")
+        return _session_memory[safe_name]
+    # Luego intentar disco
     path = f"{CACHE_DIR}/{safe_name}.json"
-    return json.load(open(path)) if os.path.exists(path) else {}
+    if os.path.exists(path):
+        data = json.load(open(path))
+        _session_memory[safe_name] = data  # repoblar memoria
+        print(f"📂 Sesión cargada desde disco: {safe_name}")
+        return data
+    print(f"⚠️  Sesión no encontrada: {safe_name}")
+    return {}
 
 @app.route("/", methods=["GET"])
 @app.route("/health", methods=["GET"])
@@ -126,7 +146,7 @@ def process_zoom(data):
 
         # 2. Extraer 36 frames
         print("🎬 Extrayendo 36 frames...")
-        frames, _ = extract_frames(video_path, n_frames=36)
+        frames, _ = extract_frames(video_path, n_frames=72)
 
         # 3. Cargar transcripción guardada por Read.ai
         cached   = load_session(meeting_topic)
