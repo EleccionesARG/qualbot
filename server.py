@@ -1,4 +1,3 @@
-
 import os
 import json
 import threading
@@ -186,7 +185,7 @@ def process_zoom_manual():
         return jsonify({"error": "Falta ?id="}), 400
     try:
         token        = _zoom_token()
-        uuid_encoded = quote(quote(meeting_uuid, safe=""), safe="")
+        uuid_encoded = quote(meeting_uuid, safe="")
         resp         = req.get(f"https://api.zoom.us/v2/meetings/{uuid_encoded}/recordings",
                                headers={"Authorization": f"Bearer {token}"})
         resp.raise_for_status()
