@@ -1,5 +1,3 @@
-
-
 import os
 import json
 import base64
@@ -207,7 +205,7 @@ Sé específico. Citá momentos reales. Cruzá siempre lo verbal con lo visual c
 
     response = client.messages.create(
         model="claude-opus-4-5",
-        max_tokens=10000,
+        max_tokens=16000,
         messages=[{"role": "user", "content": content}]
     )
 
@@ -287,26 +285,76 @@ Realizá un análisis EXHAUSTIVO y PROFUNDO. Respondé ÚNICAMENTE con un JSON v
   }},
 
   "analisis_del_lenguaje": {{
-    "palabras_clave_positivas": [],
-    "palabras_clave_negativas": [],
-    "metaforas_usadas": [],
-    "eufemismos_detectados": [],
-    "frases_mas_reveladoras": []
+    "palabras_clave_positivas": ["palabra1", "palabra2"],
+    "palabras_clave_negativas": ["palabra1", "palabra2"],
+    "metaforas_usadas": [
+      {{"metafora": "frase metafórica usada textualmente", "quien": "nombre del participante", "interpretacion": "qué revela sobre su postura o emoción"}}
+    ],
+    "eufemismos_detectados": [
+      {{"lo_que_dijeron": "frase suavizada", "lo_que_probablemente_quisieron_decir": "interpretación directa", "quien": "nombre"}}
+    ],
+    "frases_mas_reveladoras": [
+      {{"frase": "cita textual de la transcripción", "quien": "nombre", "timestamp": "MM:SS", "por_que_importa": "análisis de por qué esta frase es significativa"}}
+    ]
   }},
 
   "lo_no_dicho": {{
-    "temas_evitados": [],
-    "silencios_significativos": [],
+    "temas_evitados": [
+      {{"tema": "descripción del tema que se evitó", "evidencia": "cómo se nota en la transcripción (cambios de tema, respuestas vagas)", "posible_razon": "hipótesis sobre por qué lo evitaron"}}
+    ],
+    "silencios_significativos": [
+      {{"timestamp": "MM:SS", "contexto": "ante qué pregunta o comentario se produjo el silencio", "interpretacion": "qué puede significar ese silencio"}}
+    ],
     "senales_no_verbales_ignoradas": []
   }},
 
-  "contradicciones": [],
-  "temas_con_carga_emocional": [],
-  "insights_investigacion": [],
-  "hipotesis_no_confirmadas": [],
-  "recomendaciones": [],
-  "proximos_pasos_investigacion": [],
-  "nota_metodologica": ""
+  "contradicciones": [
+    {{
+      "participante": "nombre",
+      "dijo_primero": "cita textual",
+      "dijo_despues": "cita contradictoria",
+      "timestamp_1": "MM:SS",
+      "timestamp_2": "MM:SS",
+      "mostro_visualmente": "",
+      "interpretacion": "qué revela esta contradicción sobre su postura real"
+    }}
+  ],
+  "temas_con_carga_emocional": [
+    {{
+      "tema": "nombre del tema",
+      "carga": "Positiva / Negativa / Ambivalente",
+      "intensidad": "Baja / Media / Alta",
+      "reaccion_verbal": "cómo se expresó en palabras",
+      "reaccion_visual": "",
+      "coherencia": "si las palabras fueron consistentes entre participantes",
+      "implicancia_para_marca": "qué significa para la investigación"
+    }}
+  ],
+  "insights_investigacion": [
+    {{
+      "insight": "hallazgo claro y accionable",
+      "evidencia_verbal": "qué en la transcripción lo sostiene",
+      "evidencia_visual": "",
+      "nivel_confianza": "Alto / Medio / Requiere validación",
+      "implicancia": "qué significa para la marca o investigación"
+    }}
+  ],
+  "hipotesis_no_confirmadas": [
+    {{
+      "hipotesis": "algo que parece cierto pero necesita más investigación",
+      "indicios": "qué sugiere esto en la transcripción",
+      "como_validar": "qué metodología podría confirmarlo"
+    }}
+  ],
+  "recomendaciones": [
+    {{
+      "recomendacion": "acción concreta y específica",
+      "prioridad": "Alta / Media / Baja",
+      "justificacion": "por qué emerge de los datos"
+    }}
+  ],
+  "proximos_pasos_investigacion": ["pregunta o área que quedó abierta y merece exploración futura"],
+  "nota_metodologica": "observaciones sobre la calidad de los datos, sesgos detectados, limitaciones del análisis"
 }}"""
 
 
