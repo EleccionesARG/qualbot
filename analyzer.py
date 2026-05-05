@@ -32,7 +32,7 @@ def analyze_integrated(title, speakers, blocks, summary, topics, frames):
     speakers_list   = ", ".join(speakers) if speakers else "No identificados"
     topics_list     = ", ".join(topics)   if topics   else "No identificados"
 
-    print(f"🧠 Análisis integrado: {len(frames)} frames + transcripción → Claude Opus")
+    print(f"🧠 Análisis integrado: {len(frames)} frames + transcripción → Claude Opus 4")
 
     content = []
 
