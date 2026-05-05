@@ -1,8 +1,5 @@
-
 import os
 import requests
-from urllib.parse import quote
-
 
 def get_zoom_token():
     """Obtiene access token de Zoom via Server-to-Server OAuth"""
@@ -20,12 +17,19 @@ def get_zoom_token():
 
 
 def download_recording(download_url, output_path):
-    """Descarga la grabación de Zoom al servidor"""
+    """Descarga la grabación de Zoom al servidor.
+
+    Las URLs de tipo webhook_download requieren el token como query param,
+    no como Authorization header. Usamos query param siempre — funciona en ambos casos.
+    """
     token = get_zoom_token()
-    headers = {"Authorization": f"Bearer {token}"}
+
+    # Append access_token como query param (compatible con webhook_download y API regular)
+    separator = "&" if "?" in download_url else "?"
+    url = f"{download_url}{separator}access_token={token}"
 
     print(f"⬇️  Descargando grabación...")
-    with requests.get(download_url, headers=headers, stream=True) as r:
+    with requests.get(url, stream=True, allow_redirects=True) as r:
         r.raise_for_status()
         with open(output_path, "wb") as f:
             for chunk in r.iter_content(chunk_size=8192):
@@ -41,10 +45,8 @@ def get_recording_files(meeting_id):
     token = get_zoom_token()
     headers = {"Authorization": f"Bearer {token}"}
 
-    meeting_id_encoded = quote(meeting_id, safe="")
-
     resp = requests.get(
-        f"https://api.zoom.us/v2/meetings/{meeting_id_encoded}/recordings",
+        f"https://api.zoom.us/v2/meetings/{meeting_id}/recordings",
         headers=headers
     )
     resp.raise_for_status()
