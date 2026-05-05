@@ -201,9 +201,9 @@ def process_zoom(data):
         # 1. Descargar
         download_recording(mp4.get("download_url",""), video_path)
 
-        # 2. Extraer 72 frames
-        print("🎬 Extrayendo 72 frames...")
-        frames, _ = extract_frames(video_path, n_frames=72)
+        # 2. Extraer 100 frames (máximo de la API de Anthropic)
+        print("🎬 Extrayendo 100 frames...")
+        frames, _ = extract_frames(video_path, n_frames=100)
 
         # 3. Cargar transcripción guardada por Read.ai
         cached   = load_session(meeting_topic)
