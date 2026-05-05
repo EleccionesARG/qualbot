@@ -7,37 +7,94 @@ from flask import Flask, request, jsonify
 app = Flask(__name__)
 CACHE_DIR = "session_cache"
 
-# Caché en memoria como respaldo (sobrevive redeploys dentro del mismo proceso)
+# Caché en memoria (capa L1 — más rápida, no sobrevive redeploys)
 _session_memory = {}
+
+# ── Redis (capa L2 — persiste entre redeploys) ─────────────────────────────────
+def _get_redis():
+    """Devuelve cliente Redis si REDIS_URL está configurado, sino None."""
+    try:
+        import redis
+        url = os.environ.get("REDIS_URL") or os.environ.get("REDIS_PRIVATE_URL")
+        if url:
+            return redis.from_url(url, decode_responses=True, socket_timeout=3)
+    except Exception as e:
+        print(f"⚠️  Redis no disponible: {e}")
+    return None
+
+REDIS_KEY_PREFIX = "qualbot:session:"
+REDIS_TTL = 60 * 60 * 48  # 48 horas
 
 def save_session(meeting_title, data):
     safe_name = "".join(c if c.isalnum() or c in "-_ " else "_" for c in meeting_title)
-    # Guardar en memoria (inmediato, sobrevive dentro del mismo deploy)
+
+    # L1 — memoria
     _session_memory[safe_name] = data
-    # Guardar en disco (persiste si no hay redeploy)
+
+    # L2 — Redis (persistente entre redeploys)
+    r = _get_redis()
+    if r:
+        try:
+            r.set(f"{REDIS_KEY_PREFIX}{safe_name}", json.dumps(data, ensure_ascii=False), ex=REDIS_TTL)
+            print(f"💾 Sesión guardada en Redis: {safe_name}")
+            return
+        except Exception as e:
+            print(f"⚠️  Redis write error: {e}")
+
+    # L3 — disco (fallback si no hay Redis)
     try:
         os.makedirs(CACHE_DIR, exist_ok=True)
         with open(f"{CACHE_DIR}/{safe_name}.json", "w") as f:
-            json.dump(data, f)
+            json.dump(data, f, ensure_ascii=False)
+        print(f"💾 Sesión guardada en disco: {safe_name}")
     except Exception as e:
         print(f"⚠️  No se pudo guardar en disco: {e}")
-    print(f"💾 Sesión guardada: {safe_name}")
 
 def load_session(meeting_title):
     safe_name = "".join(c if c.isalnum() or c in "-_ " else "_" for c in meeting_title)
-    # Primero intentar memoria
+
+    # L1 — memoria
     if safe_name in _session_memory:
-        print(f"📂 Sesión cargada desde memoria: {safe_name}")
+        print(f"📂 Sesión desde memoria: {safe_name}")
         return _session_memory[safe_name]
-    # Luego intentar disco
+
+    # L2 — Redis
+    r = _get_redis()
+    if r:
+        try:
+            val = r.get(f"{REDIS_KEY_PREFIX}{safe_name}")
+            if val:
+                data = json.loads(val)
+                _session_memory[safe_name] = data  # repoblar L1
+                print(f"📂 Sesión desde Redis: {safe_name}")
+                return data
+        except Exception as e:
+            print(f"⚠️  Redis read error: {e}")
+
+    # L3 — disco
     path = f"{CACHE_DIR}/{safe_name}.json"
     if os.path.exists(path):
-        data = json.load(open(path))
-        _session_memory[safe_name] = data  # repoblar memoria
-        print(f"📂 Sesión cargada desde disco: {safe_name}")
+        with open(path) as f:
+            data = json.load(f)
+        _session_memory[safe_name] = data
+        print(f"📂 Sesión desde disco: {safe_name}")
         return data
+
     print(f"⚠️  Sesión no encontrada: {safe_name}")
     return {}
+
+@app.route("/sessions", methods=["GET"])
+def list_sessions():
+    """Lista todas las sesiones guardadas en Redis (útil para debug)."""
+    r = _get_redis()
+    if not r:
+        return jsonify({"error": "Redis no configurado", "memoria": list(_session_memory.keys())}), 200
+    try:
+        keys = r.keys(f"{REDIS_KEY_PREFIX}*")
+        sessions = [k.replace(REDIS_KEY_PREFIX, "") for k in keys]
+        return jsonify({"redis": sessions, "memoria": list(_session_memory.keys())}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/", methods=["GET"])
 @app.route("/health", methods=["GET"])
@@ -144,8 +201,8 @@ def process_zoom(data):
         # 1. Descargar
         download_recording(mp4.get("download_url",""), video_path)
 
-        # 2. Extraer 36 frames
-        print("🎬 Extrayendo 36 frames...")
+        # 2. Extraer 72 frames
+        print("🎬 Extrayendo 72 frames...")
         frames, _ = extract_frames(video_path, n_frames=72)
 
         # 3. Cargar transcripción guardada por Read.ai
