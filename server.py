@@ -125,7 +125,8 @@ def health():
 
 # ── Read.ai webhook — guarda transcripción y genera reporte de texto ───────────
 @app.route("/webhook/readai", methods=["POST"])
-def readai_webhook():\n    from analyzer import analyze_transcript
+def readai_webhook():
+    from analyzer import analyze_transcript
     from drive_uploader import upload_report
     from report_generator import generate_pdf_report
 
