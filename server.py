@@ -125,8 +125,7 @@ def health():
 
 # ── Read.ai webhook — guarda transcripción y genera reporte de texto ───────────
 @app.route("/webhook/readai", methods=["POST"])
-def readai_webhook():
-    from analyzer import analyze_transcript
+def readai_webhook():\n    from analyzer import analyze_transcript
     from drive_uploader import upload_report
     from report_generator import generate_pdf_report
 
@@ -197,7 +196,7 @@ def zoom_webhook():
 
 
 def process_zoom(data):
-    """Descarga video, extrae 36 frames y hace análisis integrado con Claude"""
+    """Descarga video, extrae 72 frames y hace análisis integrado con Claude"""
     meeting_topic = "desconocido"
     try:
         from zoom_downloader import download_recording
@@ -229,9 +228,9 @@ def process_zoom(data):
         print(f"⬇️  Descargando grabación de: {meeting_topic}")
         download_recording(mp4.get("download_url",""), video_path)
 
-        # 2. Extraer 36 frames distribuidos uniformemente
-        print("🎬 Extrayendo 36 frames...")
-        frames, duration_s = extract_frames(video_path, n_frames=36)
+        # 2. Extraer 72 frames distribuidos uniformemente
+        print("🎬 Extrayendo 72 frames...")
+        frames, duration_s = extract_frames(video_path, n_frames=72)
         print(f"✅ {len(frames)} frames de {duration_s/60:.1f} min")
 
         # 3. Cargar transcripción guardada por Read.ai
