@@ -25,8 +25,30 @@ def _get_redis():
 REDIS_KEY_PREFIX = "qualbot:session:"
 REDIS_TTL = 60 * 60 * 48  # 48 horas
 
+
+def _normalize_title(title):
+    """Normaliza el título para que Read.ai y Zoom produzcan la misma clave."""
+    title = title.strip().lower()
+    return "".join(c if c.isalnum() or c in "-_ " else "_" for c in title)
+
+
+def _notify_error(context, error, tb=""):
+    """Envía alerta a Slack si SLACK_WEBHOOK_URL está configurado."""
+    url = os.environ.get("SLACK_WEBHOOK_URL", "")
+    if not url:
+        return
+    try:
+        import requests as req
+        text = f"❌ *QualBot error* en `{context}`\n```{error}```"
+        if tb:
+            text += f"\n```{tb[-1500:]}```"
+        req.post(url, json={"text": text}, timeout=5)
+    except Exception as e:
+        print(f"⚠️  No se pudo notificar a Slack: {e}")
+
+
 def save_session(meeting_title, data):
-    safe_name = "".join(c if c.isalnum() or c in "-_ " else "_" for c in meeting_title)
+    safe_name = _normalize_title(meeting_title)
 
     # L1 — memoria
     _session_memory[safe_name] = data
@@ -51,7 +73,7 @@ def save_session(meeting_title, data):
         print(f"⚠️  No se pudo guardar en disco: {e}")
 
 def load_session(meeting_title):
-    safe_name = "".join(c if c.isalnum() or c in "-_ " else "_" for c in meeting_title)
+    safe_name = _normalize_title(meeting_title)
 
     # L1 — memoria
     if safe_name in _session_memory:
@@ -125,7 +147,7 @@ def readai_webhook():
 
         print(f"📋 {meeting_title} | {len(speakers)} speakers | {len(blocks)} bloques")
 
-        # Guardar en disco para que el análisis de video lo cruce después
+        # Guardar en caché para que el análisis de video lo cruce después
         save_session(meeting_title, {
             "meeting_title": meeting_title,
             "meeting_date":  meeting_date,
@@ -147,7 +169,9 @@ def readai_webhook():
         return jsonify({"status": "ok", "drive_url": drive_url}), 200
 
     except Exception as e:
-        import traceback; traceback.print_exc()
+        import traceback; tb = traceback.format_exc()
+        print(tb)
+        _notify_error("readai_webhook", e, tb)
         return jsonify({"error": str(e)}), 500
 
 
@@ -174,6 +198,7 @@ def zoom_webhook():
 
 def process_zoom(data):
     """Descarga video, extrae 36 frames y hace análisis integrado con Claude"""
+    meeting_topic = "desconocido"
     try:
         from zoom_downloader import download_recording
         from video_analyzer import extract_frames
@@ -184,6 +209,8 @@ def process_zoom(data):
         obj             = data.get("payload", {}).get("object", {})
         meeting_topic   = obj.get("topic", "Focus Group")
         recording_files = obj.get("recording_files", [])
+
+        print(f"🎬 Iniciando análisis integrado: {meeting_topic}")
 
         # Buscar el MP4 principal
         mp4 = next((f for f in recording_files
@@ -199,13 +226,16 @@ def process_zoom(data):
         video_path = f"recordings/zoom_{session_id}.mp4"
 
         # 1. Descargar
+        print(f"⬇️  Descargando grabación de: {meeting_topic}")
         download_recording(mp4.get("download_url",""), video_path)
 
-        # 2. Extraer 100 frames (máximo de la API de Anthropic)
-        print("🎬 Extrayendo 100 frames...")
-        frames, _ = extract_frames(video_path, n_frames=100)
+        # 2. Extraer 36 frames distribuidos uniformemente
+        print("🎬 Extrayendo 36 frames...")
+        frames, duration_s = extract_frames(video_path, n_frames=36)
+        print(f"✅ {len(frames)} frames de {duration_s/60:.1f} min")
 
         # 3. Cargar transcripción guardada por Read.ai
+        print(f"📂 Buscando sesión en caché: {_normalize_title(meeting_topic)}")
         cached   = load_session(meeting_topic)
         blocks   = cached.get("blocks", [])
         speakers = cached.get("speakers", [])
@@ -214,21 +244,30 @@ def process_zoom(data):
         date     = cached.get("meeting_date", str(datetime.now().date()))
         url      = cached.get("report_url", "")
 
+        if not blocks:
+            print(f"⚠️  Transcripción no encontrada para '{meeting_topic}' — el reporte integrado no tendrá texto")
+
         # 4. UN SOLO llamado a Claude con texto + video
         print("🧠 Análisis integrado texto + video...")
         analysis = analyze_integrated(meeting_topic, speakers, blocks, summary, topics, frames)
 
         # 5. PDF y Drive
+        print("📄 Generando PDF integrado...")
         pdf_path  = generate_pdf_report(session_id, meeting_topic, date,
                                          speakers, topics, summary, analysis, url)
         drive_url = upload_report(pdf_path, f"QualBot_Integrado_{meeting_topic}_{session_id}.pdf")
         print(f"✅ Reporte integrado → Drive: {drive_url}")
 
-        os.remove(video_path)
+        try:
+            os.remove(video_path)
+        except Exception:
+            pass
 
     except Exception as e:
-        import traceback; traceback.print_exc()
-        print(f"❌ Error: {e}")
+        import traceback; tb = traceback.format_exc()
+        print(tb)
+        print(f"❌ Error en análisis integrado de '{meeting_topic}': {e}")
+        _notify_error(f"process_zoom / {meeting_topic}", e, tb)
 
 
 # ── Listar grabaciones recientes ───────────────────────────────────────────────
