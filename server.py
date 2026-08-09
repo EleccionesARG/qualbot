@@ -254,9 +254,10 @@ def process_zoom(data):
         print(f"⬇️  Descargando grabación de: {meeting_topic}")
         download_recording(mp4.get("download_url",""), video_path)
 
-        # 2. Extraer 72 frames distribuidos uniformemente
-        print("🎬 Extrayendo 72 frames...")
-        frames, duration_s = extract_frames(video_path, n_frames=72)
+        # 2. Extraer frames distribuidos uniformemente (configurable por env)
+        n_frames = int(os.environ.get("QUALBOT_N_FRAMES", "72"))
+        print(f"🎬 Extrayendo {n_frames} frames...")
+        frames, duration_s = extract_frames(video_path, n_frames=n_frames)
         print(f"✅ {len(frames)} frames de {duration_s/60:.1f} min")
 
         # 3. Cargar transcripción guardada por Read.ai
