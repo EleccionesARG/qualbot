@@ -19,6 +19,131 @@ C_GREEN  = colors.HexColor("#06d6a0")
 
 PAGE_W = A4[0] - 4*cm
 
+# Labels de todo el texto fijo del reporte, por idioma (modo inglés: lang="en")
+LABELS = {
+    "es": {
+        "report_title": "QualBot — Reporte de Focus Group",
+        "badge_integrated": "  ·  Análisis Integrado Texto + Video",
+        "badge_text": "  ·  Análisis de Texto",
+        "kpi_emotion_text": "Emoción (texto)", "kpi_intensity": "Intensidad",
+        "kpi_participants": "Participantes", "kpi_emotion_video": "Emoción (video)",
+        "resumen_ejecutivo": "Resumen ejecutivo",
+        "temperatura_grupal": "Temperatura grupal",
+        "inicio": "Inicio", "desarrollo": "Desarrollo", "cierre": "Cierre",
+        "arco": "Arco narrativo",
+        "participantes": "Participantes", "participacion": "Participación",
+        "perfil": "Perfil", "estilo": "Estilo comunicacional",
+        "expresion_visual": "Expresión visual",
+        "momento_revelador": "Momento más revelador",
+        "postura": "Postura real vs. declarada",
+        "momentos_criticos": "Momentos críticos",
+        "verbal": "Verbal", "visual": "Visual",
+        "disonancia": "⚡ Disonancia", "importancia": "Importancia",
+        "dinamicas_poder": "Dinámicas de poder",
+        "lider": "Líder de opinión", "seguidor": "Seguidor principal",
+        "disidente": "Voz disidente", "silenciado": "Silenciado",
+        "mapa_influencia": "Mapa de influencia",
+        "presion_social": "Momentos de presión social",
+        "hdr_tiempo": "Tiempo", "hdr_quien_presiono": "Quién presionó",
+        "hdr_quien_cedio": "Quién cedió", "hdr_descripcion": "Descripción",
+        "analisis_lenguaje": "Análisis del lenguaje",
+        "palabras_pos": "Palabras positivas", "palabras_neg": "Palabras negativas",
+        "metaforas": "Metáforas usadas", "hdr_metafora": "Metáfora",
+        "hdr_quien": "Quién", "hdr_interpretacion": "Interpretación",
+        "eufemismos": "Eufemismos detectados",
+        "hdr_dijeron": "Lo que dijeron", "hdr_quisieron": "Lo que quisieron decir",
+        "frases_reveladoras": "Frases más reveladoras",
+        "hdr_frase": "Frase", "hdr_por_que": "Por qué importa",
+        "no_dicho": "Lo no dicho", "temas_evitados": "Temas evitados",
+        "hdr_tema": "Tema", "hdr_evidencia": "Evidencia",
+        "hdr_razon": "Posible razón",
+        "silencios": "Silencios significativos", "hdr_contexto": "Contexto",
+        "senales": "Señales no verbales ignoradas",
+        "hdr_cuerpo": "Lo que mostró el cuerpo", "hdr_decia": "Lo que se decía",
+        "contradicciones": "Contradicciones",
+        "dijo_primero": "Primero dijo", "dijo_despues": "Después dijo",
+        "interpretacion": "Interpretación",
+        "temas_carga": "Temas con carga emocional",
+        "coherencia": "Coherencia", "implicancia": "Implicancia",
+        "insights": "Insights de investigación",
+        "evidencia_verbal": "Evidencia verbal", "evidencia_visual": "Evidencia visual",
+        "confianza": "Confianza",
+        "hipotesis": "Hipótesis no confirmadas",
+        "indicios": "Indicios", "como_validar": "Cómo validar",
+        "recomendaciones": "Recomendaciones", "justificacion": "Justificación",
+        "proximos_pasos": "Próximos pasos",
+        "nota_metodologica": "Nota metodológica",
+        "transcript_title": "QualBot — Transcripción de Focus Group",
+    },
+    "en": {
+        "report_title": "QualBot — Focus Group Report",
+        "badge_integrated": "  ·  Integrated Text + Video Analysis",
+        "badge_text": "  ·  Text Analysis",
+        "kpi_emotion_text": "Emotion (text)", "kpi_intensity": "Intensity",
+        "kpi_participants": "Participants", "kpi_emotion_video": "Emotion (video)",
+        "resumen_ejecutivo": "Executive summary",
+        "temperatura_grupal": "Group temperature",
+        "inicio": "Opening", "desarrollo": "Development", "cierre": "Closing",
+        "arco": "Narrative arc",
+        "participantes": "Participants", "participacion": "Participation",
+        "perfil": "Profile", "estilo": "Communication style",
+        "expresion_visual": "Visual expression",
+        "momento_revelador": "Most revealing moment",
+        "postura": "Actual vs. stated position",
+        "momentos_criticos": "Critical moments",
+        "verbal": "Verbal", "visual": "Visual",
+        "disonancia": "⚡ Dissonance", "importancia": "Significance",
+        "dinamicas_poder": "Power dynamics",
+        "lider": "Opinion leader", "seguidor": "Main follower",
+        "disidente": "Dissenting voice", "silenciado": "Silenced",
+        "mapa_influencia": "Influence map",
+        "presion_social": "Social pressure moments",
+        "hdr_tiempo": "Time", "hdr_quien_presiono": "Who pressured",
+        "hdr_quien_cedio": "Who yielded", "hdr_descripcion": "Description",
+        "analisis_lenguaje": "Language analysis",
+        "palabras_pos": "Positive words", "palabras_neg": "Negative words",
+        "metaforas": "Metaphors used", "hdr_metafora": "Metaphor",
+        "hdr_quien": "Who", "hdr_interpretacion": "Interpretation",
+        "eufemismos": "Euphemisms detected",
+        "hdr_dijeron": "What they said", "hdr_quisieron": "What they likely meant",
+        "frases_reveladoras": "Most revealing quotes",
+        "hdr_frase": "Quote", "hdr_por_que": "Why it matters",
+        "no_dicho": "The unsaid", "temas_evitados": "Avoided topics",
+        "hdr_tema": "Topic", "hdr_evidencia": "Evidence",
+        "hdr_razon": "Possible reason",
+        "silencios": "Meaningful silences", "hdr_contexto": "Context",
+        "senales": "Ignored non-verbal signals",
+        "hdr_cuerpo": "What the body showed", "hdr_decia": "What was being said",
+        "contradicciones": "Contradictions",
+        "dijo_primero": "First said", "dijo_despues": "Later said",
+        "interpretacion": "Interpretation",
+        "temas_carga": "Emotionally charged topics",
+        "coherencia": "Consistency", "implicancia": "Implication",
+        "insights": "Research insights",
+        "evidencia_verbal": "Verbal evidence", "evidencia_visual": "Visual evidence",
+        "confianza": "Confidence",
+        "hipotesis": "Unconfirmed hypotheses",
+        "indicios": "Indications", "como_validar": "How to validate",
+        "recomendaciones": "Recommendations", "justificacion": "Rationale",
+        "proximos_pasos": "Next steps",
+        "nota_metodologica": "Methodological note",
+        "transcript_title": "QualBot — Focus Group Transcript",
+    },
+}
+
+# Mapas de color por valor categórico — con claves ES y EN porque el análisis
+# traducido llega con los valores en inglés
+CARGA_COLORS = {
+    "Positiva": "#06d6a0", "Positive": "#06d6a0",
+    "Negativa": "#ef476f", "Negative": "#ef476f",
+    "Ambivalente": "#ffd166", "Ambivalent": "#ffd166",
+}
+PRIORIDAD_COLORS = {
+    "Alta": "#ef476f", "High": "#ef476f",
+    "Media": "#ffd166", "Medium": "#ffd166",
+    "Baja": "#06d6a0", "Low": "#06d6a0",
+}
+
 def st(name, **kw):
     kw.setdefault("fontName", "Helvetica")
     return ParagraphStyle(name, **kw)
@@ -81,9 +206,12 @@ def note(text):
         spaceAfter=3, leading=12))
 
 def generate_pdf_report(session_id, title, date, speakers, topics, summary,
-                         analysis, readai_url="", video_analysis=None):
+                         analysis, readai_url="", video_analysis=None, lang="es"):
+    L = LABELS.get(lang, LABELS["es"])
     os.makedirs("reportes", exist_ok=True)
-    path = f"reportes/QualBot_{session_id}.pdf"
+    # Sufijo de idioma para que el PDF EN no pise al ES (comparten session_id)
+    suffix = "" if lang == "es" else f"_{lang}"
+    path = f"reportes/QualBot_{session_id}{suffix}.pdf"
 
     doc = SimpleDocTemplate(path, pagesize=A4,
           rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
@@ -96,8 +224,8 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
     has_video = bool(analysis.get("emocion_dominante_visual"))
 
     # ── HEADER ────────────────────────────────────────────────────────────────
-    badge = "  ·  Análisis Integrado Texto + Video" if has_video else "  ·  Análisis de Texto"
-    story.append(Paragraph("QualBot — Reporte de Focus Group", S_title))
+    badge = L["badge_integrated"] if has_video else L["badge_text"]
+    story.append(Paragraph(L["report_title"], S_title))
     story.append(Paragraph(f"{title}  |  {date}{badge}", S_sub))
     story.append(HRFlowable(width="100%", thickness=1, color=C_ACCENT, spaceAfter=10))
 
@@ -112,8 +240,8 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
 
     kpi = Table([
         [Paragraph(emo, S_kv), Paragraph(intens, S_kv), Paragraph(n_part, S_kv), Paragraph(emo_vis, S_kv)],
-        [Paragraph("Emoción (texto)", S_kl), Paragraph("Intensidad", S_kl),
-         Paragraph("Participantes", S_kl), Paragraph("Emoción (video)", S_kl)],
+        [Paragraph(L["kpi_emotion_text"], S_kl), Paragraph(L["kpi_intensity"], S_kl),
+         Paragraph(L["kpi_participants"], S_kl), Paragraph(L["kpi_emotion_video"], S_kl)],
     ], colWidths=[PAGE_W*0.25]*4)
     kpi.setStyle(TableStyle([
         ("BACKGROUND",    (0,0), (-1,-1), C_LIGHT),
@@ -127,7 +255,7 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
     story.append(Spacer(1, 10))
 
     # ── RESUMEN EJECUTIVO ─────────────────────────────────────────────────────
-    story.append(h2("Resumen ejecutivo"))
+    story.append(h2(L["resumen_ejecutivo"]))
     story.append(body(analysis.get("resumen_ejecutivo", "")))
     if summary:
         story.append(note(f"Read.ai: {summary}"))
@@ -135,19 +263,19 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
     # ── TEMPERATURA GRUPAL ────────────────────────────────────────────────────
     temp = analysis.get("temperatura_grupal", {})
     if temp:
-        story.append(h2("Temperatura grupal"))
+        story.append(h2(L["temperatura_grupal"]))
         rows = [[k, v] for k, v in [
-            ("Inicio",         temp.get("inicio","")),
-            ("Desarrollo",     temp.get("desarrollo","")),
-            ("Cierre",         temp.get("cierre","")),
-            ("Arco narrativo", temp.get("arco_narrativo","")),
+            (L["inicio"],     temp.get("inicio","")),
+            (L["desarrollo"], temp.get("desarrollo","")),
+            (L["cierre"],     temp.get("cierre","")),
+            (L["arco"],       temp.get("arco_narrativo","")),
         ] if v]
         if rows: story.append(mk_table(rows, [0.22, 0.78]))
 
     # ── PARTICIPANTES ─────────────────────────────────────────────────────────
     participantes = analysis.get("participantes", [])
     if participantes:
-        story.append(h2("Participantes"))
+        story.append(h2(L["participantes"]))
         for p in participantes:
             bloque = []
             bloque.append(mk_table([[
@@ -155,15 +283,15 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
                     st("pn", fontSize=10, fontName="Helvetica-Bold", textColor=C_DARK)),
                 Paragraph(p.get("emocion_predominante",""),
                     st("pe", fontSize=9, textColor=C_ACCENT)),
-                Paragraph(f"Participación: {p.get('nivel_participacion','')}",
+                Paragraph(f"{L['participacion']}: {p.get('nivel_participacion','')}",
                     st("pp", fontSize=8, textColor=C_MUTED)),
             ]], [0.30, 0.35, 0.35]))
             for campo, label in [
-                ("perfil_psicologico",       "Perfil"),
-                ("estilo_comunicacional",    "Estilo comunicacional"),
-                ("expresion_visual",         "Expresión visual"),
-                ("momento_mas_revelador",    "Momento más revelador"),
-                ("postura_real_vs_declarada","Postura real vs. declarada"),
+                ("perfil_psicologico",       L["perfil"]),
+                ("estilo_comunicacional",    L["estilo"]),
+                ("expresion_visual",         L["expresion_visual"]),
+                ("momento_mas_revelador",    L["momento_revelador"]),
+                ("postura_real_vs_declarada",L["postura"]),
             ]:
                 if p.get(campo):
                     bloque.append(note(f"{label}: {p[campo]}"))
@@ -173,7 +301,7 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
     # ── MOMENTOS CRITICOS INTEGRADOS ──────────────────────────────────────────
     momentos = analysis.get("momentos_criticos_integrados", [])
     if momentos:
-        story.append(h2("Momentos críticos"))
+        story.append(h2(L["momentos_criticos"]))
         for m in momentos:
             if not isinstance(m, dict):
                 story.append(body(str(m))); continue
@@ -189,31 +317,31 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
                 Paragraph(f"<b>{ts}</b>", st("mt", fontSize=9, fontName="Helvetica-Bold", textColor=C_ACCENT)),
                 Paragraph(f"<b>{tipo}</b>", st("mtt", fontSize=9, fontName="Helvetica-Bold", textColor=C_DARK)),
             ]], [0.12, 0.88]))
-            if verbal:    bloque.append(note(f"Verbal: {verbal}"))
-            if visual:    bloque.append(note(f"Visual: {visual}"))
-            if disonancia: bloque.append(body(f"⚡ Disonancia: {disonancia}"))
-            if importancia: bloque.append(note(f"Importancia: {importancia}"))
+            if verbal:    bloque.append(note(f"{L['verbal']}: {verbal}"))
+            if visual:    bloque.append(note(f"{L['visual']}: {visual}"))
+            if disonancia: bloque.append(body(f"{L['disonancia']}: {disonancia}"))
+            if importancia: bloque.append(note(f"{L['importancia']}: {importancia}"))
             bloque.append(Spacer(1, 5))
             story.append(KeepTogether(bloque))
 
     # ── DINAMICAS DE PODER ────────────────────────────────────────────────────
     poder = analysis.get("dinamicas_de_poder", {})
     if poder:
-        story.append(h2("Dinámicas de poder"))
+        story.append(h2(L["dinamicas_poder"]))
         rows = [[k, v] for k, v in [
-            ("Líder de opinión",   poder.get("lider_opinion","")),
-            ("Seguidor principal", poder.get("seguidor_principal","")),
-            ("Voz disidente",      poder.get("voz_disidente","")),
-            ("Silenciado",         poder.get("silenciado","")),
-            ("Mapa de influencia", poder.get("mapa_de_influencia","")),
+            (L["lider"],           poder.get("lider_opinion","")),
+            (L["seguidor"],        poder.get("seguidor_principal","")),
+            (L["disidente"],       poder.get("voz_disidente","")),
+            (L["silenciado"],      poder.get("silenciado","")),
+            (L["mapa_influencia"], poder.get("mapa_de_influencia","")),
         ] if v]
         if rows: story.append(mk_table(rows, [0.25, 0.75]))
 
         presiones = poder.get("momentos_de_presion_social", [])
         if presiones:
             story.append(Spacer(1,4))
-            story.append(h3("Momentos de presión social"))
-            data = [["Tiempo","Quién presionó","Quién cedió","Descripción"]]
+            story.append(h3(L["presion_social"]))
+            data = [[L["hdr_tiempo"], L["hdr_quien_presiono"], L["hdr_quien_cedio"], L["hdr_descripcion"]]]
             for pr in presiones:
                 if isinstance(pr, dict):
                     data.append([pr.get("timestamp",""), pr.get("quien_presiono",""),
@@ -225,19 +353,19 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
     # ── ANALISIS DEL LENGUAJE ─────────────────────────────────────────────────
     lenguaje = analysis.get("analisis_del_lenguaje", {})
     if lenguaje:
-        story.append(h2("Análisis del lenguaje"))
+        story.append(h2(L["analisis_lenguaje"]))
         pos = lenguaje.get("palabras_clave_positivas", [])
         neg = lenguaje.get("palabras_clave_negativas", [])
         if pos or neg:
             story.append(mk_table([
-                ["Palabras positivas", ", ".join(pos)],
-                ["Palabras negativas", ", ".join(neg)],
+                [L["palabras_pos"], ", ".join(pos)],
+                [L["palabras_neg"], ", ".join(neg)],
             ], [0.25, 0.75]))
 
         metaforas = lenguaje.get("metaforas_usadas", [])
         if metaforas:
-            story.append(Spacer(1,4)); story.append(h3("Metáforas usadas"))
-            data = [["Metáfora","Quién","Interpretación"]]
+            story.append(Spacer(1,4)); story.append(h3(L["metaforas"]))
+            data = [[L["hdr_metafora"], L["hdr_quien"], L["hdr_interpretacion"]]]
             for m in metaforas:
                 if isinstance(m, dict):
                     data.append([m.get("metafora",""), m.get("quien",""), m.get("interpretacion","")])
@@ -247,8 +375,8 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
 
         eufemismos = lenguaje.get("eufemismos_detectados", [])
         if eufemismos:
-            story.append(Spacer(1,4)); story.append(h3("Eufemismos detectados"))
-            data = [["Lo que dijeron","Lo que quisieron decir","Quién"]]
+            story.append(Spacer(1,4)); story.append(h3(L["eufemismos"]))
+            data = [[L["hdr_dijeron"], L["hdr_quisieron"], L["hdr_quien"]]]
             for e in eufemismos:
                 if isinstance(e, dict):
                     data.append([e.get("lo_que_dijeron",""),
@@ -260,8 +388,8 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
 
         frases = lenguaje.get("frases_mas_reveladoras", [])
         if frases:
-            story.append(Spacer(1,4)); story.append(h3("Frases más reveladoras"))
-            data = [["Tiempo","Quién","Frase","Por qué importa"]]
+            story.append(Spacer(1,4)); story.append(h3(L["frases_reveladoras"]))
+            data = [[L["hdr_tiempo"], L["hdr_quien"], L["hdr_frase"], L["hdr_por_que"]]]
             for f in frases:
                 if isinstance(f, dict):
                     data.append([f.get("timestamp",""), f.get("quien",""),
@@ -273,11 +401,11 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
     # ── LO NO DICHO ───────────────────────────────────────────────────────────
     no_dicho = analysis.get("lo_no_dicho", {})
     if no_dicho:
-        story.append(h2("Lo no dicho"))
+        story.append(h2(L["no_dicho"]))
         evitados = no_dicho.get("temas_evitados", [])
         if evitados:
-            story.append(h3("Temas evitados"))
-            data = [["Tema","Evidencia","Posible razón"]]
+            story.append(h3(L["temas_evitados"]))
+            data = [[L["hdr_tema"], L["hdr_evidencia"], L["hdr_razon"]]]
             for e in evitados:
                 if isinstance(e, dict):
                     data.append([e.get("tema",""), e.get("evidencia",""), e.get("posible_razon","")])
@@ -287,8 +415,8 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
 
         silencios = no_dicho.get("silencios_significativos", [])
         if silencios:
-            story.append(Spacer(1,4)); story.append(h3("Silencios significativos"))
-            data = [["Tiempo","Contexto","Interpretación"]]
+            story.append(Spacer(1,4)); story.append(h3(L["silencios"]))
+            data = [[L["hdr_tiempo"], L["hdr_contexto"], L["hdr_interpretacion"]]]
             for s in silencios:
                 if isinstance(s, dict):
                     data.append([s.get("timestamp",""), s.get("contexto",""), s.get("interpretacion","")])
@@ -298,8 +426,8 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
 
         senales = no_dicho.get("senales_no_verbales_ignoradas", [])
         if senales:
-            story.append(Spacer(1,4)); story.append(h3("Señales no verbales ignoradas"))
-            data = [["Tiempo","Lo que mostró el cuerpo","Lo que se decía","Interpretación"]]
+            story.append(Spacer(1,4)); story.append(h3(L["senales"]))
+            data = [[L["hdr_tiempo"], L["hdr_cuerpo"], L["hdr_decia"], L["hdr_interpretacion"]]]
             for s in senales:
                 if isinstance(s, dict):
                     data.append([s.get("timestamp",""), s.get("lo_que_mostro_el_cuerpo",""),
@@ -311,7 +439,7 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
     # ── CONTRADICCIONES ───────────────────────────────────────────────────────
     contradicciones = analysis.get("contradicciones", [])
     if contradicciones:
-        story.append(h2("Contradicciones"))
+        story.append(h2(L["contradicciones"]))
         for c in contradicciones:
             if not isinstance(c, dict):
                 story.append(body(str(c))); continue
@@ -322,24 +450,24 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
                 Paragraph(f"{c.get('timestamp_1','')} → {c.get('timestamp_2','')}",
                     st("ct", fontSize=8, textColor=C_MUTED)),
             ]], [0.70, 0.30]))
-            bloque.append(note(f"Primero dijo: {c.get('dijo_primero','')}"))
-            bloque.append(note(f"Después dijo: {c.get('dijo_despues','')}"))
+            bloque.append(note(f"{L['dijo_primero']}: {c.get('dijo_primero','')}"))
+            bloque.append(note(f"{L['dijo_despues']}: {c.get('dijo_despues','')}"))
             if c.get("mostro_visualmente"):
-                bloque.append(note(f"Visual: {c.get('mostro_visualmente','')}"))
-            bloque.append(body(f"Interpretación: {c.get('interpretacion','')}"))
+                bloque.append(note(f"{L['visual']}: {c.get('mostro_visualmente','')}"))
+            bloque.append(body(f"{L['interpretacion']}: {c.get('interpretacion','')}"))
             bloque.append(Spacer(1, 5))
             story.append(KeepTogether(bloque))
 
     # ── TEMAS CON CARGA EMOCIONAL ─────────────────────────────────────────────
     temas = analysis.get("temas_con_carga_emocional", [])
     if temas:
-        story.append(h2("Temas con carga emocional"))
+        story.append(h2(L["temas_carga"]))
         for t in temas:
             if not isinstance(t, dict):
                 story.append(body(str(t))); continue
             bloque = []
             carga = t.get("carga","")
-            color_c = {"Positiva": "#06d6a0", "Negativa": "#ef476f", "Ambivalente": "#ffd166"}.get(carga, "#6b6b8a")
+            color_c = CARGA_COLORS.get(carga, "#6b6b8a")
             bloque.append(mk_table([[
                 Paragraph(f"<b>{t.get('tema','')}</b>",
                     st("tn", fontSize=9, fontName="Helvetica-Bold", textColor=C_DARK)),
@@ -347,32 +475,32 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
                     st("tc", fontSize=8, textColor=C_DARK)),
             ]], [0.65, 0.35]))
             if t.get("reaccion_verbal"):
-                bloque.append(note(f"Verbal: {t.get('reaccion_verbal','')}"))
+                bloque.append(note(f"{L['verbal']}: {t.get('reaccion_verbal','')}"))
             if t.get("reaccion_visual"):
-                bloque.append(note(f"Visual: {t.get('reaccion_visual','')}"))
+                bloque.append(note(f"{L['visual']}: {t.get('reaccion_visual','')}"))
             if t.get("coherencia"):
-                bloque.append(note(f"Coherencia: {t.get('coherencia','')}"))
+                bloque.append(note(f"{L['coherencia']}: {t.get('coherencia','')}"))
             if t.get("implicancia_para_marca"):
-                bloque.append(note(f"Implicancia: {t.get('implicancia_para_marca','')}"))
+                bloque.append(note(f"{L['implicancia']}: {t.get('implicancia_para_marca','')}"))
             bloque.append(Spacer(1,5))
             story.append(KeepTogether(bloque))
 
     # ── INSIGHTS ──────────────────────────────────────────────────────────────
     insights = analysis.get("insights_investigacion", [])
     if insights:
-        story.append(h2("Insights de investigación"))
+        story.append(h2(L["insights"]))
         for i, ins in enumerate(insights, 1):
             bloque = []
             if isinstance(ins, dict):
                 bloque.append(body(f"<b>{i}. {ins.get('insight','')}</b>"))
                 if ins.get("evidencia_verbal"):
-                    bloque.append(note(f"Evidencia verbal: {ins.get('evidencia_verbal')}"))
+                    bloque.append(note(f"{L['evidencia_verbal']}: {ins.get('evidencia_verbal')}"))
                 if ins.get("evidencia_visual"):
-                    bloque.append(note(f"Evidencia visual: {ins.get('evidencia_visual')}"))
+                    bloque.append(note(f"{L['evidencia_visual']}: {ins.get('evidencia_visual')}"))
                 if ins.get("implicancia"):
-                    bloque.append(note(f"Implicancia: {ins.get('implicancia')}"))
+                    bloque.append(note(f"{L['implicancia']}: {ins.get('implicancia')}"))
                 if ins.get("nivel_confianza"):
-                    bloque.append(note(f"Confianza: {ins.get('nivel_confianza')}"))
+                    bloque.append(note(f"{L['confianza']}: {ins.get('nivel_confianza')}"))
             else:
                 bloque.append(body(f"{i}. {safe(ins)}"))
             bloque.append(Spacer(1,4))
@@ -381,13 +509,13 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
     # ── HIPOTESIS ─────────────────────────────────────────────────────────────
     hipotesis = analysis.get("hipotesis_no_confirmadas", [])
     if hipotesis:
-        story.append(h2("Hipótesis no confirmadas"))
+        story.append(h2(L["hipotesis"]))
         for h in hipotesis:
             bloque = []
             if isinstance(h, dict):
                 bloque.append(body(f"<b>{h.get('hipotesis','')}</b>"))
-                if h.get("indicios"):   bloque.append(note(f"Indicios: {h.get('indicios')}"))
-                if h.get("como_validar"): bloque.append(note(f"Cómo validar: {h.get('como_validar')}"))
+                if h.get("indicios"):   bloque.append(note(f"{L['indicios']}: {h.get('indicios')}"))
+                if h.get("como_validar"): bloque.append(note(f"{L['como_validar']}: {h.get('como_validar')}"))
             else:
                 bloque.append(body(safe(h)))
             bloque.append(Spacer(1,4))
@@ -396,15 +524,15 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
     # ── RECOMENDACIONES ───────────────────────────────────────────────────────
     recos = analysis.get("recomendaciones", [])
     if recos:
-        story.append(h2("Recomendaciones"))
+        story.append(h2(L["recomendaciones"]))
         for r in recos:
             bloque = []
             if isinstance(r, dict):
                 prioridad = r.get("prioridad","")
-                color_p = {"Alta": "#ef476f", "Media": "#ffd166", "Baja": "#06d6a0"}.get(prioridad, "#6b6b8a")
+                color_p = PRIORIDAD_COLORS.get(prioridad, "#6b6b8a")
                 bloque.append(body(f'<font color="{color_p}"><b>[{prioridad}]</b></font>  {r.get("recomendacion","")}'))
                 if r.get("justificacion"):
-                    bloque.append(note(f"Justificación: {r.get('justificacion')}"))
+                    bloque.append(note(f"{L['justificacion']}: {r.get('justificacion')}"))
             else:
                 bloque.append(body(f"→  {safe(r)}"))
             bloque.append(Spacer(1,4))
@@ -413,14 +541,14 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
     # ── PROXIMOS PASOS ────────────────────────────────────────────────────────
     proximos = analysis.get("proximos_pasos_investigacion", [])
     if proximos:
-        story.append(h2("Próximos pasos"))
+        story.append(h2(L["proximos_pasos"]))
         for p in proximos:
             story.append(body(f"→  {safe(p)}"))
 
     # ── NOTA METODOLOGICA ─────────────────────────────────────────────────────
     nota = analysis.get("nota_metodologica", "")
     if nota:
-        story.append(h2("Nota metodológica"))
+        story.append(h2(L["nota_metodologica"]))
         story.append(note(nota))
 
     # ── FOOTER ────────────────────────────────────────────────────────────────
@@ -432,4 +560,42 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
 
     doc.build(story)
     print(f"PDF generado: {path}")
+    return path
+
+
+def generate_transcript_document(session_id, title, date, translated_blocks, lang="en"):
+    """PDF con la transcripción traducida: [MM:SS] Speaker + párrafo por bloque.
+
+    translated_blocks: [{"speaker": str, "start_time": ms, "text_en": str}, ...]"""
+    L = LABELS.get(lang, LABELS["en"])
+    os.makedirs("reportes", exist_ok=True)
+    path = f"reportes/QualBot_Transcript_{session_id}_{lang}.pdf"
+
+    doc = SimpleDocTemplate(path, pagesize=A4,
+          rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
+
+    S_title = st("T", fontSize=18, textColor=C_DARK, fontName="Helvetica-Bold", spaceAfter=4)
+    S_sub   = st("S", fontSize=10, textColor=C_MUTED, spaceAfter=4)
+    S_spk   = st("SPK", fontSize=9, fontName="Helvetica-Bold", textColor=C_ACCENT,
+                 spaceBefore=8, spaceAfter=2)
+
+    story = [
+        Paragraph(L["transcript_title"], S_title),
+        Paragraph(f"{title}  |  {date}", S_sub),
+        HRFlowable(width="100%", thickness=1, color=C_ACCENT, spaceAfter=10),
+    ]
+
+    for b in translated_blocks:
+        start = int(b.get("start_time", 0) or 0)
+        mins, secs = divmod(start // 1000, 60)
+        story.append(Paragraph(f"[{mins:02d}:{secs:02d}] {b.get('speaker','?')}", S_spk))
+        story.append(body(b.get("text_en", "")))
+
+    story.append(Spacer(1, 16))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=C_MUTED, spaceAfter=6))
+    story.append(Paragraph(f"QualBot  |  {datetime.now().strftime('%m/%d/%Y %H:%M')}",
+                           st("F", fontSize=8, textColor=C_MUTED, alignment=TA_CENTER)))
+
+    doc.build(story)
+    print(f"Transcript PDF generado: {path}")
     return path

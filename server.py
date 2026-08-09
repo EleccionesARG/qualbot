@@ -258,6 +258,12 @@ def process_zoom(data):
         drive_url = upload_report(pdf_path, f"QualBot_Integrado_{meeting_topic}_{session_id}.pdf")
         print(f"✅ Reporte integrado → Drive: {drive_url}")
 
+        # 6. Modo inglés: PDF EN + transcripción traducida (QUALBOT_LANG=en)
+        from config import ENGLISH_MODE
+        if ENGLISH_MODE:
+            _generate_english_outputs(session_id, meeting_topic, date, speakers,
+                                      topics, analysis, url, blocks)
+
         try:
             os.remove(video_path)
         except Exception:
@@ -268,6 +274,48 @@ def process_zoom(data):
         print(tb)
         print(f"❌ Error en análisis integrado de '{meeting_topic}': {e}")
         _notify_error(f"process_zoom / {meeting_topic}", e, tb)
+
+
+def _generate_english_outputs(session_id, topic, date, speakers, topics,
+                              analysis, url, blocks):
+    """Genera y sube el PDF EN y la transcripción traducida. Cada artefacto
+    falla de forma aislada (alerta a Slack) — los PDFs ES ya están en Drive.
+
+    Nota: el flujo interim de Read.ai (readai_webhook) no genera versión EN a
+    propósito; el entregable para el cliente es este reporte integrado. Si algún
+    día hace falta, llamar a esta función al final de readai_webhook."""
+    from translator import translate_analysis, translate_transcript_blocks
+    from report_generator import generate_pdf_report, generate_transcript_document
+    from drive_uploader import upload_report
+
+    # 6a. Análisis traducido → PDF EN. El summary de Read.ai va vacío porque
+    # viene en castellano y no pasa por la traducción.
+    try:
+        print("🌐 Traduciendo análisis a inglés...")
+        analysis_en = translate_analysis(analysis)
+        pdf_en = generate_pdf_report(session_id, topic, date, speakers, topics,
+                                     "", analysis_en, url, lang="en")
+        u = upload_report(pdf_en, f"QualBot_Integrado_{topic}_{session_id}_EN.pdf")
+        print(f"✅ Reporte EN → Drive: {u}")
+    except Exception as e:
+        import traceback; tb = traceback.format_exc()
+        print(tb)
+        _notify_error(f"translate_analysis / {topic}", e, tb)
+
+    # 6b. Transcripción completa traducida → PDF aparte
+    if not blocks:
+        print("⚠️  Sin transcripción — se omite el documento de transcripción EN")
+        return
+    try:
+        print(f"🌐 Traduciendo transcripción ({len(blocks)} bloques)...")
+        blocks_en = translate_transcript_blocks(blocks)
+        doc_path = generate_transcript_document(session_id, topic, date, blocks_en, lang="en")
+        u = upload_report(doc_path, f"QualBot_Transcript_{topic}_{session_id}_EN.pdf")
+        print(f"✅ Transcripción EN → Drive: {u}")
+    except Exception as e:
+        import traceback; tb = traceback.format_exc()
+        print(tb)
+        _notify_error(f"translate_transcript / {topic}", e, tb)
 
 
 # ── Listar grabaciones recientes ───────────────────────────────────────────────
