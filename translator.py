@@ -27,24 +27,33 @@ Below is a JSON object containing a focus group analysis written in Rioplatense 
 4. Translate categorical values consistently: "Alta"->"High", "Media"->"Medium", "Baja"->"Low", "Muy Alta"->"Very High", "Alto"->"High", "Medio"->"Medium", "Bajo"->"Low", "Dominante"->"Dominant", "Positiva"->"Positive", "Negativa"->"Negative", "Ambivalente"->"Ambivalent", "Requiere validación"->"Needs validation".
 5. For verbatim quotes from participants ("frase", "dijo_primero", "dijo_despues", "metafora", "lo_que_dijeron", etc.): translate faithfully, preserving the colloquial spoken register. For untranslatable Argentine idioms, translate the meaning and optionally add a brief clarification in square brackets.
 6. Be faithful to the analytical content — do not summarize, soften, or embellish.
-
+{context_section}
 Respond ONLY with the translated JSON object. No preamble, no markdown fences.
 
 {json_es}"""
 
 
-def translate_analysis(analysis):
+def _context_section(context):
+    if not context:
+        return ""
+    return f"\nSession context (to disambiguate terminology): {context}\n"
+
+
+def translate_analysis(analysis, context=""):
     """Traduce los valores del dict de análisis a inglés. Claves intactas.
 
     Lanza TranslationError si el resultado no parsea o cambia la estructura."""
     client = _client()
     json_es = json.dumps(analysis, ensure_ascii=False, indent=2)
+    prompt = ANALYSIS_PROMPT.format(
+        json_es=json_es, context_section=_context_section(context)
+    )
 
     with client.messages.stream(
         model=TRANSLATION_MODEL,
         max_tokens=32000,
-        thinking={"type": "disabled"},
-        messages=[{"role": "user", "content": ANALYSIS_PROMPT.format(json_es=json_es)}],
+        output_config={"effort": "low"},
+        messages=[{"role": "user", "content": prompt}],
     ) as stream:
         response = stream.get_final_message()
 
@@ -72,7 +81,7 @@ Rules:
 2. For untranslatable Argentine idioms or slang, translate the meaning and, when helpful, add a brief clarification in square brackets, e.g. "che [hey]" or "un quilombo [a huge mess]".
 3. Do not translate participant names.
 4. Output format: one line per segment, starting with the exact same marker [[N]], followed by the translation ONLY (no speaker name — it will be re-added). Same number of segments as the input. Nothing else.
-{context_section}
+{session_context}{prev_section}
 Segments to translate:
 {chunk_text}"""
 
@@ -115,22 +124,24 @@ def _parse_chunk(raw, n_expected):
     return [found[i] for i in range(1, n_expected + 1)]
 
 
-def _translate_chunk(client, chunk, prev_context):
-    context_section = ""
+def _translate_chunk(client, chunk, prev_context, session_context=""):
+    prev_section = ""
     if prev_context:
-        context_section = (
+        prev_section = (
             "\nFor continuity, the last lines already translated were:\n"
             + prev_context
             + "\nDo NOT re-translate them.\n"
         )
     prompt = TRANSCRIPT_PROMPT.format(
-        context_section=context_section, chunk_text=_format_chunk(chunk)
+        session_context=_context_section(session_context),
+        prev_section=prev_section,
+        chunk_text=_format_chunk(chunk),
     )
     for attempt in range(2):
         response = client.messages.create(
             model=TRANSLATION_MODEL,
-            max_tokens=8000,
-            thinking={"type": "disabled"},
+            max_tokens=12000,
+            output_config={"effort": "low"},
             messages=[{"role": "user", "content": prompt}],
         )
         raw = "".join(b.text for b in response.content if b.type == "text")
@@ -141,7 +152,7 @@ def _translate_chunk(client, chunk, prev_context):
     raise TranslationError(f"Chunk de {len(chunk)} bloques no se pudo alinear tras 2 intentos")
 
 
-def translate_transcript_blocks(blocks):
+def translate_transcript_blocks(blocks, context=""):
     """Traduce speaker_blocks de Read.ai en lotes.
 
     Devuelve [{"speaker": str, "start_time": ms, "text_en": str}, ...]."""
@@ -156,7 +167,7 @@ def translate_transcript_blocks(blocks):
             prev_context = "\n".join(
                 f"{t['speaker']}: {t['text_en']}" for t in translated[-2:]
             )
-        texts = _translate_chunk(client, chunk, prev_context)
+        texts = _translate_chunk(client, chunk, prev_context, session_context=context)
         for b, text_en in zip(chunk, texts):
             translated.append({
                 "speaker": b.get("speaker", {}).get("name", "?"),

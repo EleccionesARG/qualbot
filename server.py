@@ -32,19 +32,39 @@ def _normalize_title(title):
     return "".join(c if c.isalnum() or c in "-_ " else "_" for c in title)
 
 
-def _notify_error(context, error, tb=""):
-    """Envía alerta a Slack si SLACK_WEBHOOK_URL está configurado."""
-    url = os.environ.get("SLACK_WEBHOOK_URL", "")
-    if not url:
-        return
-    try:
-        import requests as req
-        text = f"❌ *QualBot error* en `{context}`\n```{error}```"
-        if tb:
-            text += f"\n```{tb[-1500:]}```"
-        req.post(url, json={"text": text}, timeout=5)
-    except Exception as e:
-        print(f"⚠️  No se pudo notificar a Slack: {e}")
+from notifier import notify_error as _notify_error
+
+
+def _verify_zoom_signature(req):
+    """Verifica el HMAC x-zm-signature de Zoom en cada evento del webhook.
+
+    Sin esto, cualquiera que conozca la URL puede mandar eventos falsos con un
+    download_url propio y robar el access token de Zoom (se agrega como query
+    param al descargar). Si ZOOM_WEBHOOK_SECRET no está seteado, no se puede
+    verificar y se deja pasar (comportamiento previo)."""
+    secret = os.environ.get("ZOOM_WEBHOOK_SECRET", "")
+    if not secret:
+        print("⚠️  ZOOM_WEBHOOK_SECRET no configurado — webhook sin verificar")
+        return True
+    import hmac, hashlib
+    ts  = req.headers.get("x-zm-request-timestamp", "")
+    sig = req.headers.get("x-zm-signature", "")
+    msg = f"v0:{ts}:{req.get_data(as_text=True)}"
+    expected = "v0=" + hmac.new(secret.encode(), msg.encode(), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, sig)
+
+
+def _check_admin_key(req):
+    """Exige ?key=<QUALBOT_ADMIN_KEY> en los endpoints manuales.
+
+    Si la variable no está seteada, los endpoints quedan abiertos (para no
+    romper el flujo actual hasta configurarla en Railway)."""
+    required = os.environ.get("QUALBOT_ADMIN_KEY", "")
+    if not required:
+        print("⚠️  QUALBOT_ADMIN_KEY no configurado — endpoints manuales abiertos")
+        return True
+    import hmac
+    return hmac.compare_digest(req.args.get("key", ""), required)
 
 
 def save_session(meeting_title, data):
@@ -108,6 +128,8 @@ def load_session(meeting_title):
 @app.route("/sessions", methods=["GET"])
 def list_sessions():
     """Lista todas las sesiones guardadas en Redis (útil para debug)."""
+    if not _check_admin_key(request):
+        return jsonify({"error": "falta ?key="}), 401
     r = _get_redis()
     if not r:
         return jsonify({"error": "Redis no configurado", "memoria": list(_session_memory.keys())}), 200
@@ -178,6 +200,9 @@ def readai_webhook():
 # ── Zoom webhook — dispara análisis integrado cuando la grabación está lista ───
 @app.route("/webhook/zoom", methods=["POST"])
 def zoom_webhook():
+    if not _verify_zoom_signature(request):
+        print("🚫 Firma de Zoom inválida — evento rechazado")
+        return jsonify({"error": "firma inválida"}), 401
     data  = request.json or {}
     event = data.get("event", "")
     print(f"📥 Zoom: {event}")
@@ -288,11 +313,15 @@ def _generate_english_outputs(session_id, topic, date, speakers, topics,
     from report_generator import generate_pdf_report, generate_transcript_document
     from drive_uploader import upload_report
 
+    session_context = topic
+    if topics:
+        session_context += ". Topics discussed: " + ", ".join(topics)
+
     # 6a. Análisis traducido → PDF EN. El summary de Read.ai va vacío porque
     # viene en castellano y no pasa por la traducción.
     try:
         print("🌐 Traduciendo análisis a inglés...")
-        analysis_en = translate_analysis(analysis)
+        analysis_en = translate_analysis(analysis, context=session_context)
         pdf_en = generate_pdf_report(session_id, topic, date, speakers, topics,
                                      "", analysis_en, url, lang="en")
         u = upload_report(pdf_en, f"QualBot_Integrado_{topic}_{session_id}_EN.pdf")
@@ -308,7 +337,7 @@ def _generate_english_outputs(session_id, topic, date, speakers, topics,
         return
     try:
         print(f"🌐 Traduciendo transcripción ({len(blocks)} bloques)...")
-        blocks_en = translate_transcript_blocks(blocks)
+        blocks_en = translate_transcript_blocks(blocks, context=session_context)
         doc_path = generate_transcript_document(session_id, topic, date, blocks_en, lang="en")
         u = upload_report(doc_path, f"QualBot_Transcript_{topic}_{session_id}_EN.pdf")
         print(f"✅ Transcripción EN → Drive: {u}")
@@ -321,6 +350,8 @@ def _generate_english_outputs(session_id, topic, date, speakers, topics,
 # ── Listar grabaciones recientes ───────────────────────────────────────────────
 @app.route("/zoom-recordings", methods=["GET"])
 def list_zoom_recordings():
+    if not _check_admin_key(request):
+        return jsonify({"error": "falta ?key="}), 401
     import requests as req
     try:
         token = _zoom_token()
@@ -342,6 +373,8 @@ def list_zoom_recordings():
 # ── Trigger manual por UUID ────────────────────────────────────────────────────
 @app.route("/process-zoom", methods=["GET"])
 def process_zoom_manual():
+    if not _check_admin_key(request):
+        return jsonify({"error": "falta ?key="}), 401
     import requests as req
     from urllib.parse import quote
     meeting_uuid = request.args.get("id","")
@@ -365,6 +398,8 @@ def process_zoom_manual():
 # ── Trigger manual por nombre del grupo (busca en la lista de grabaciones) ─────
 @app.route("/reprocess-meeting", methods=["GET"])
 def reprocess_meeting():
+    if not _check_admin_key(request):
+        return jsonify({"error": "falta ?key="}), 401
     import requests as req
     from datetime import timedelta
     topic_query = request.args.get("topic", "").lower()

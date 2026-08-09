@@ -2,6 +2,34 @@ import os
 import json
 import base64
 
+from notifier import notify_error
+
+ANALYSIS_MODEL = "claude-opus-5"
+
+
+def _run_analysis(client, content, max_tokens, context=""):
+    """Llama al modelo con streaming y devuelve el dict del análisis.
+
+    En claude-opus-5 el thinking viene activado por defecto y consume parte de
+    max_tokens, por eso el headroom es mayor que el largo esperado del JSON."""
+    with client.messages.stream(
+        model=ANALYSIS_MODEL,
+        max_tokens=max_tokens,
+        messages=[{"role": "user", "content": content}],
+    ) as stream:
+        response = stream.get_final_message()
+
+    if response.stop_reason == "refusal":
+        notify_error(f"analysis refusal / {context}",
+                     f"stop_reason=refusal, stop_details={response.stop_details}")
+        raise RuntimeError(f"El modelo rechazó el análisis: {response.stop_details}")
+    if response.stop_reason == "max_tokens":
+        notify_error(f"analysis truncado / {context}",
+                     f"stop_reason=max_tokens con max_tokens={max_tokens}")
+
+    raw = "".join(b.text for b in response.content if b.type == "text")
+    return _parse_json(raw, context=context)
+
 
 def analyze_transcript(title, speakers, blocks, summary, topics):
     """Análisis solo de texto — se usa cuando no hay video disponible"""
@@ -14,13 +42,7 @@ def analyze_transcript(title, speakers, blocks, summary, topics):
 
     prompt = _build_text_prompt(title, speakers_list, topics_list, summary, transcript_text)
 
-    response = client.messages.create(
-        model="claude-opus-4-5",
-        max_tokens=8000,
-        messages=[{"role": "user", "content": prompt}]
-    )
-
-    return _parse_json(response.content[0].text)
+    return _run_analysis(client, prompt, max_tokens=24000, context=title)
 
 
 def analyze_integrated(title, speakers, blocks, summary, topics, frames):
@@ -32,7 +54,7 @@ def analyze_integrated(title, speakers, blocks, summary, topics, frames):
     speakers_list   = ", ".join(speakers) if speakers else "No identificados"
     topics_list     = ", ".join(topics)   if topics   else "No identificados"
 
-    print(f"🧠 Análisis integrado: {len(frames)} frames + transcripción → Claude Opus 4")
+    print(f"🧠 Análisis integrado: {len(frames)} frames + transcripción → {ANALYSIS_MODEL}")
 
     content = []
 
@@ -203,13 +225,7 @@ Sé específico. Citá momentos reales. Cruzá siempre lo verbal con lo visual c
             }
         })
 
-    response = client.messages.create(
-        model="claude-opus-4-5",
-        max_tokens=16000,
-        messages=[{"role": "user", "content": content}]
-    )
-
-    return _parse_json(response.content[0].text)
+    return _run_analysis(client, content, max_tokens=32000, context=title)
 
 
 def _format_transcript(blocks):
@@ -358,11 +374,14 @@ Realizá un análisis EXHAUSTIVO y PROFUNDO. Respondé ÚNICAMENTE con un JSON v
 }}"""
 
 
-def _parse_json(raw):
+def _parse_json(raw, context=""):
     raw = raw.strip().replace("```json", "").replace("```", "").strip()
     try:
         return json.loads(raw)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        # El fallback degrada el reporte a casi vacío: avisar en vez de fallar mudo
+        notify_error(f"JSON malformado del análisis / {context}",
+                     f"{e} — primeros 300 chars: {raw[:300]}")
         return {
             "resumen_ejecutivo": raw[:500],
             "emocion_general_sesion": "No determinado",
