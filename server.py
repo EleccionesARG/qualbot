@@ -143,7 +143,13 @@ def list_sessions():
 @app.route("/", methods=["GET"])
 @app.route("/health", methods=["GET"])
 def health():
-    return "OK", 200
+    from config import QUALBOT_LANG, ENGLISH_MODE, TRANSLATION_MODEL
+    return jsonify({
+        "status": "ok",
+        "lang": QUALBOT_LANG,
+        "english_mode": ENGLISH_MODE,
+        "translation_model": TRANSLATION_MODEL if ENGLISH_MODE else None,
+    }), 200
 
 # ── Read.ai webhook — guarda transcripción y genera reporte de texto ───────────
 @app.route("/webhook/readai", methods=["POST"])
