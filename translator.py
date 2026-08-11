@@ -27,10 +27,17 @@ Below is a JSON object containing a focus group analysis written in Rioplatense 
 4. Translate categorical values consistently: "Alta"->"High", "Media"->"Medium", "Baja"->"Low", "Muy Alta"->"Very High", "Alto"->"High", "Medio"->"Medium", "Bajo"->"Low", "Dominante"->"Dominant", "Positiva"->"Positive", "Negativa"->"Negative", "Ambivalente"->"Ambivalent", "Requiere validación"->"Needs validation".
 5. For verbatim quotes from participants ("frase", "dijo_primero", "dijo_despues", "metafora", "lo_que_dijeron", etc.): translate faithfully, preserving the colloquial spoken register. For untranslatable Argentine idioms, translate the meaning and optionally add a brief clarification in square brackets.
 6. Be faithful to the analytical content — do not summarize, soften, or embellish.
-{context_section}
+{context_section}{transcript_ref}
 Respond ONLY with the translated JSON object. No preamble, no markdown fences.
 
 {json_es}"""
+
+TRANSCRIPT_REF_TEMPLATE = """
+REFERENCE — Full English transcript of this session (already translated). When translating verbatim participant quotes, reuse the EXACT wording from this transcript whenever the quoted line appears in it, so quotes in the report match the transcript document word-for-word:
+<<<
+{transcript_en}
+>>>
+"""
 
 
 def _context_section(context):
@@ -46,14 +53,23 @@ def _context_section(context):
     return "\n" + "\n".join(parts) + "\n"
 
 
-def translate_analysis(analysis, context=""):
+def translate_analysis(analysis, context="", transcript_en=""):
     """Traduce los valores del dict de análisis a inglés. Claves intactas.
+
+    Si se pasa transcript_en (la transcripción ya traducida), las citas
+    textuales del reporte se toman verbatim de ahí, para que reporte y
+    transcripción coincidan palabra por palabra.
 
     Lanza TranslationError si el resultado no parsea o cambia la estructura."""
     client = _client()
     json_es = json.dumps(analysis, ensure_ascii=False, indent=2)
+    transcript_ref = ""
+    if transcript_en:
+        transcript_ref = TRANSCRIPT_REF_TEMPLATE.format(transcript_en=transcript_en)
     prompt = ANALYSIS_PROMPT.format(
-        json_es=json_es, context_section=_context_section(context)
+        json_es=json_es,
+        context_section=_context_section(context),
+        transcript_ref=transcript_ref,
     )
 
     with client.messages.stream(
@@ -161,6 +177,19 @@ def _translate_chunk(client, chunk, prev_context, session_context=""):
             return parsed
         print(f"⚠️  Chunk desalineado (intento {attempt + 1}/2), reintentando...")
     raise TranslationError(f"Chunk de {len(chunk)} bloques no se pudo alinear tras 2 intentos")
+
+
+def format_translated_transcript(translated_blocks):
+    """Texto plano '[MM:SS] Speaker: ...' de la transcripción traducida,
+    con tiempos relativos — para usar como referencia de citas."""
+    starts = [int(b.get("start_time", 0) or 0) for b in translated_blocks]
+    t0 = min((s for s in starts if s > 0), default=0)
+    lines = []
+    for b, s in zip(translated_blocks, starts):
+        rel = max(0, s - t0)
+        mins, secs = divmod(rel // 1000, 60)
+        lines.append(f"[{mins:02d}:{secs:02d}] {b.get('speaker','?')}: {b.get('text_en','')}")
+    return "\n".join(lines)
 
 
 def _strip_speaker_prefix(text, speaker):

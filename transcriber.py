@@ -90,18 +90,13 @@ def _label(speaker_id):
 
 # ── Mapeo de nombres reales usando la transcripción de Read.ai ─────────────────
 
-MAPPING_PROMPT = """Below are two transcripts of the SAME meeting (in Spanish).
+MAPPING_PROMPT = """Below is a transcript of a meeting (in Spanish) produced by a high-quality engine that labels speakers generically ({labels}), plus reference material that reveals the participants' real names.
 
-Transcript A was produced by a high-quality engine but labels speakers generically ({labels}).
-Transcript B was produced by another tool that knows the participants' real names.
+Match each generic label to a real participant name, comparing what each speaker says and when (self-introductions, how others address them, roles described in the notes). Respond ONLY with a JSON object mapping every label to a name, e.g. {{"Hablante 1": "Juan", "Hablante 2": "Ana"}}. Prefer real person names over usernames or generic labels when the reference material gives both. If you cannot confidently match a label, map it to itself.
 
-Match each generic label from A to the real name in B, by comparing what each speaker says and when. Respond ONLY with a JSON object mapping every label of A to a name from B, e.g. {{"Hablante 1": "Juan", "Hablante 2": "Ana"}}. If you cannot confidently match a label, map it to itself.
-
-=== TRANSCRIPT A (samples per speaker) ===
+=== TRANSCRIPT (samples per speaker) ===
 {samples_a}
-
-=== TRANSCRIPT B (samples per speaker, real names) ===
-{samples_b}"""
+{reference}"""
 
 
 def _rel_mmss(ms, t0):
@@ -122,24 +117,32 @@ def _samples_by_speaker(blocks, min_chars=40, per_speaker=4):
     return samples
 
 
-def map_speaker_names(blocks, readai_blocks):
-    """Renombra 'Hablante N' a los nombres reales que Read.ai obtuvo de Zoom.
+def map_speaker_names(blocks, readai_blocks, brief=""):
+    """Renombra 'Hablante N' a los nombres reales, usando la transcripción
+    nombrada de Read.ai y/o el brief del equipo de investigación.
 
     Si algo falla, devuelve los bloques con las etiquetas genéricas."""
-    if not readai_blocks:
+    if not readai_blocks and not brief:
         return blocks
     try:
         import anthropic
         from config import TRANSLATION_MODEL
 
         samples_a = _samples_by_speaker(blocks)
-        samples_b = _samples_by_speaker(readai_blocks)
         fmt = lambda d: "\n".join(f"{k}:\n" + "\n".join(f"  {u}" for u in v)
                                   for k, v in d.items())
+        reference = ""
+        if readai_blocks:
+            samples_b = _samples_by_speaker(readai_blocks)
+            reference += ("\n=== SAME MEETING, transcribed by another tool that knows "
+                          "the participants' names (samples per speaker) ===\n" + fmt(samples_b))
+        if brief:
+            reference += ("\n=== RESEARCH TEAM NOTES (participants and context) ===\n"
+                          + brief[:3000])
         prompt = MAPPING_PROMPT.format(
             labels=", ".join(samples_a.keys()),
             samples_a=fmt(samples_a),
-            samples_b=fmt(samples_b),
+            reference=reference,
         )
         client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
         resp = client.messages.create(

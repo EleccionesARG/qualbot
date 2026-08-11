@@ -151,6 +151,172 @@ def health():
         "translation_model": TRANSLATION_MODEL if ENGLISH_MODE else None,
     }), 200
 
+# ── Caché del análisis: no re-pagar Opus si falla la subida a Drive ───────────
+ANALYSIS_PREFIX = "qualbot:analysis:"
+ANALYSIS_TTL = 60 * 60 * 24 * 7  # 7 días
+_analysis_memory = {}
+
+
+def _save_analysis_cache(topic, data):
+    safe = _normalize_title(topic)
+    _analysis_memory[safe] = data
+    r = _get_redis()
+    if r:
+        try:
+            r.set(f"{ANALYSIS_PREFIX}{safe}", json.dumps(data, ensure_ascii=False),
+                  ex=ANALYSIS_TTL)
+            print(f"💾 Análisis cacheado: {safe}")
+        except Exception as e:
+            print(f"⚠️  Redis analysis cache error: {e}")
+
+
+def _load_analysis_cache(topic):
+    safe = _normalize_title(topic)
+    if safe in _analysis_memory:
+        return _analysis_memory[safe]
+    r = _get_redis()
+    if r:
+        try:
+            val = r.get(f"{ANALYSIS_PREFIX}{safe}")
+            if val:
+                return json.loads(val)
+        except Exception as e:
+            print(f"⚠️  Redis analysis read error: {e}")
+    return None
+
+
+@app.route("/regenerate", methods=["GET"])
+def regenerate():
+    """Regenera y sube los PDFs desde el análisis cacheado (sin re-analizar).
+
+    Útil si falló la subida a Drive o se cambió la carpeta destino."""
+    if not _check_admin_key(request):
+        return jsonify({"error": "falta ?key="}), 401
+    topic = request.args.get("topic", "")
+    if not topic:
+        return jsonify({"error": "Falta ?topic="}), 400
+    data = _load_analysis_cache(topic)
+    if not data:
+        return jsonify({"error": f"No hay análisis cacheado para '{topic}' "
+                                 "(dura 7 días desde el procesamiento)"}), 404
+    threading.Thread(target=_regenerate_outputs, args=(data,), daemon=True).start()
+    return jsonify({"status": "regenerando desde caché",
+                    "topic": data.get("topic"), "session_id": data.get("session_id")}), 200
+
+
+def _regenerate_outputs(d):
+    try:
+        from report_generator import generate_pdf_report
+        from drive_uploader import upload_report
+        from config import ENGLISH_MODE
+
+        session_id, topic = d["session_id"], d["topic"]
+        print(f"♻️  Regenerando reportes de '{topic}' desde caché...")
+        pdf_path = generate_pdf_report(session_id, topic, d["date"], d["speakers"],
+                                       d["topics"], d["summary"], d["analysis"], d["url"])
+        u = upload_report(pdf_path, f"QualBot_Integrado_{topic}_{session_id}.pdf")
+        print(f"✅ Reporte integrado (regen) → Drive: {u}")
+        if ENGLISH_MODE:
+            _generate_english_outputs(session_id, topic, d["date"], d["speakers"],
+                                      d["topics"], d["summary"], d["analysis"],
+                                      d["url"], d["blocks"])
+    except Exception as e:
+        import traceback; tb = traceback.format_exc()
+        print(tb)
+        _notify_error("regenerate", e, tb)
+
+
+# ── Brief de sesión: contexto del equipo de investigación ─────────────────────
+BRIEF_PREFIX = "qualbot:brief:"
+BRIEF_TTL = 60 * 60 * 24 * 60  # 60 días
+_brief_memory = {}
+
+
+def save_brief(topic, text):
+    safe = _normalize_title(topic)
+    _brief_memory[safe] = text
+    r = _get_redis()
+    if r:
+        try:
+            r.set(f"{BRIEF_PREFIX}{safe}", text, ex=BRIEF_TTL)
+            print(f"📝 Brief guardado: {safe} ({len(text)} chars)")
+        except Exception as e:
+            print(f"⚠️  Redis brief error: {e}")
+
+
+def load_brief(topic):
+    safe = _normalize_title(topic)
+    if safe in _brief_memory:
+        return _brief_memory[safe]
+    r = _get_redis()
+    if r:
+        try:
+            val = r.get(f"{BRIEF_PREFIX}{safe}")
+            if val:
+                _brief_memory[safe] = val
+                return val
+        except Exception as e:
+            print(f"⚠️  Redis brief read error: {e}")
+    return ""
+
+
+@app.route("/brief", methods=["GET", "POST"])
+def brief_page():
+    """Formulario para cargar el contexto de cada sesión antes del focus.
+
+    El título tiene que coincidir con el nombre de la reunión de Zoom (el
+    matching usa la misma normalización que el resto del pipeline)."""
+    from markupsafe import escape
+    if not _check_admin_key(request):
+        return "Falta ?key=<QUALBOT_ADMIN_KEY>", 401
+
+    saved = ""
+    if request.method == "POST":
+        topic = request.form.get("topic", "").strip()
+        text = request.form.get("text", "").strip()
+        if topic and text:
+            save_brief(topic, text)
+            saved = f"✅ Brief guardado para «{topic}»"
+
+    topic = (request.values.get("topic") or "").strip()
+    text = load_brief(topic) if topic else ""
+    key = request.values.get("key", "")
+
+    existing = list(_brief_memory.keys())
+    r = _get_redis()
+    if r:
+        try:
+            existing = sorted({k.replace(BRIEF_PREFIX, "") for k in r.keys(f"{BRIEF_PREFIX}*")})
+        except Exception:
+            pass
+
+    links = " · ".join(
+        f'<a href="/brief?topic={escape(t)}&key={escape(key)}">{escape(t)}</a>'
+        for t in existing) or "ninguno"
+
+    return f"""<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QualBot — Brief de sesión</title>
+<style>body{{font-family:sans-serif;max-width:760px;margin:2rem auto;padding:0 1rem;color:#1a1a2e}}
+textarea{{width:100%;height:340px;font-size:14px;padding:8px}}
+input[type=text]{{width:100%;font-size:15px;padding:8px}}
+button{{background:#7c6aff;color:#fff;border:0;padding:10px 24px;font-size:15px;border-radius:6px;cursor:pointer}}
+.ok{{color:#06d6a0;font-weight:bold}} .hint{{color:#6b6b8a;font-size:13px}}</style></head><body>
+<h2>QualBot — Brief de sesión</h2>
+<p class="ok">{escape(saved)}</p>
+<form method="POST" action="/brief?key={escape(key)}">
+<p><label>Título de la reunión de Zoom (tiene que coincidir):<br>
+<input type="text" name="topic" value="{escape(topic)}" placeholder="Grupo 1 - Jóvenes" required></label></p>
+<p><label>Contexto para el análisis:<br>
+<textarea name="text" placeholder="CLIENTE Y OBJETIVOS:\n...\n\nPARTICIPANTES (nombre, edad, perfil):\n...\n\nGUÍA DE PAUTAS / TEMAS:\n...\n\nHIPÓTESIS O FOCOS DE ATENCIÓN:\n...">{escape(text)}</textarea></label></p>
+<p class="hint">Este texto se inyecta en el análisis, la traducción y el mapeo de hablantes.
+Cargalo antes de que termine la reunión. Dura 60 días.</p>
+<button type="submit">Guardar brief</button>
+</form>
+<p class="hint">Briefs cargados: {links}</p>
+</body></html>"""
+
+
 # ── Read.ai webhook — guarda transcripción y genera reporte de texto ───────────
 _readai_recent = {}  # fallback de dedupe si no hay Redis (por proceso)
 
@@ -200,6 +366,7 @@ def _process_readai(data):
 
     try:
         meeting_title = data.get("title", "Focus Group")
+        brief         = load_brief(meeting_title)
         meeting_date  = data.get("date", str(datetime.now().date()))
         report_url    = data.get("report_url", "")
         summary       = data.get("summary", "")
@@ -223,7 +390,10 @@ def _process_readai(data):
 
         # Reporte de solo texto mientras llega el video
         session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-        analysis   = analyze_transcript(meeting_title, speakers, blocks, summary, topics)
+        analysis   = analyze_transcript(meeting_title, speakers, blocks, summary,
+                                        topics, brief=brief)
+        from validator import verify_quotes
+        analysis, _corr = verify_quotes(analysis, blocks)
         pdf_path   = generate_pdf_report(session_id, meeting_title, meeting_date,
                                           speakers, topics, summary, analysis, report_url)
         drive_url  = upload_report(pdf_path, f"QualBot_{meeting_title}_{meeting_date}.pdf")
@@ -314,6 +484,10 @@ def process_zoom(data):
         if not blocks:
             print(f"⚠️  Transcripción no encontrada para '{meeting_topic}' — el reporte integrado no tendrá texto")
 
+        brief = load_brief(meeting_topic)
+        if brief:
+            print(f"📝 Brief de sesión encontrado ({len(brief)} chars)")
+
         # 3.5 Transcripción propia con ElevenLabs Scribe (si hay API key).
         # Reemplaza los bloques de Read.ai para el análisis y las traducciones;
         # Read.ai queda como plan B y aporta los nombres reales de los hablantes.
@@ -330,7 +504,7 @@ def process_zoom(data):
                     src_path = audio_path
                 el_blocks = transcribe_recording(src_path, num_speakers=len(speakers) or None)
                 if el_blocks:
-                    el_blocks = map_speaker_names(el_blocks, blocks)
+                    el_blocks = map_speaker_names(el_blocks, blocks, brief=brief)
                     blocks = el_blocks
                     print(f"✅ Usando transcripción propia ({len(blocks)} bloques)")
             except Exception as e:
@@ -341,7 +515,23 @@ def process_zoom(data):
 
         # 4. UN SOLO llamado a Claude con texto + video
         print("🧠 Análisis integrado texto + video...")
-        analysis = analyze_integrated(meeting_topic, speakers, blocks, summary, topics, frames)
+        analysis = analyze_integrated(meeting_topic, speakers, blocks, summary,
+                                      topics, frames, brief=brief)
+
+        # 4.5 Verificación determinista de citas contra la transcripción
+        from validator import verify_quotes
+        analysis, correcciones = verify_quotes(analysis, blocks)
+        if correcciones:
+            print(f"🔎 Validador de citas: {len(correcciones)} correcciones/avisos")
+            for linea in correcciones[:10]:
+                print(f"   · {linea}")
+
+        # 4.6 Cachear el análisis: si Drive falla, /regenerate lo reusa gratis
+        _save_analysis_cache(meeting_topic, {
+            "session_id": session_id, "topic": meeting_topic, "date": date,
+            "speakers": speakers, "topics": topics, "summary": summary,
+            "url": url, "analysis": analysis, "blocks": blocks,
+        })
 
         # 5. PDF y Drive
         print("📄 Generando PDF integrado...")
@@ -378,22 +568,46 @@ def _generate_english_outputs(session_id, topic, date, speakers, topics,
     Nota: el flujo interim de Read.ai (readai_webhook) no genera versión EN a
     propósito; el entregable para el cliente es este reporte integrado. Si algún
     día hace falta, llamar a esta función al final de readai_webhook."""
-    from translator import translate_analysis, translate_transcript_blocks
+    from translator import (translate_analysis, translate_transcript_blocks,
+                            format_translated_transcript)
     from report_generator import generate_pdf_report, generate_transcript_document
     from drive_uploader import upload_report
 
     session_context = topic
     if topics:
         session_context += ". Topics discussed: " + ", ".join(topics)
+    brief = load_brief(topic)
+    if brief:
+        session_context += "\nResearch team brief for this session:\n" + brief[:2500]
 
-    # 6a. Análisis traducido → PDF EN. El summary de Read.ai viaja como clave
+    # 6a. Transcripción traducida PRIMERO: además de ser un entregable, sirve
+    # de referencia para que las citas del reporte EN salgan palabra por
+    # palabra iguales a la transcripción.
+    transcript_en_text = ""
+    if blocks:
+        try:
+            print(f"🌐 Traduciendo transcripción ({len(blocks)} bloques)...")
+            blocks_en = translate_transcript_blocks(blocks, context=session_context)
+            doc_path = generate_transcript_document(session_id, topic, date, blocks_en, lang="en")
+            u = upload_report(doc_path, f"QualBot_Transcript_{topic}_{session_id}_EN.pdf")
+            print(f"✅ Transcripción EN → Drive: {u}")
+            transcript_en_text = format_translated_transcript(blocks_en)
+        except Exception as e:
+            import traceback; tb = traceback.format_exc()
+            print(tb)
+            _notify_error(f"translate_transcript / {topic}", e, tb)
+    else:
+        print("⚠️  Sin transcripción — se omite el documento de transcripción EN")
+
+    # 6b. Análisis traducido → PDF EN. El summary de Read.ai viaja como clave
     # extra del dict para traducirse en la misma llamada.
     try:
         print("🌐 Traduciendo análisis a inglés...")
         payload = dict(analysis)
         if summary:
             payload["resumen_readai"] = summary
-        analysis_en = translate_analysis(payload, context=session_context)
+        analysis_en = translate_analysis(payload, context=session_context,
+                                         transcript_en=transcript_en_text)
         summary_en = analysis_en.pop("resumen_readai", "")
         pdf_en = generate_pdf_report(session_id, topic, date, speakers, topics,
                                      summary_en, analysis_en, url, lang="en")
@@ -403,21 +617,6 @@ def _generate_english_outputs(session_id, topic, date, speakers, topics,
         import traceback; tb = traceback.format_exc()
         print(tb)
         _notify_error(f"translate_analysis / {topic}", e, tb)
-
-    # 6b. Transcripción completa traducida → PDF aparte
-    if not blocks:
-        print("⚠️  Sin transcripción — se omite el documento de transcripción EN")
-        return
-    try:
-        print(f"🌐 Traduciendo transcripción ({len(blocks)} bloques)...")
-        blocks_en = translate_transcript_blocks(blocks, context=session_context)
-        doc_path = generate_transcript_document(session_id, topic, date, blocks_en, lang="en")
-        u = upload_report(doc_path, f"QualBot_Transcript_{topic}_{session_id}_EN.pdf")
-        print(f"✅ Transcripción EN → Drive: {u}")
-    except Exception as e:
-        import traceback; tb = traceback.format_exc()
-        print(tb)
-        _notify_error(f"translate_transcript / {topic}", e, tb)
 
 
 # ── Listar grabaciones recientes ───────────────────────────────────────────────

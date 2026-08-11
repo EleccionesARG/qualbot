@@ -7,6 +7,15 @@ from notifier import notify_error
 ANALYSIS_MODEL = "claude-opus-5"
 
 
+def _brief_section(brief):
+    if not brief:
+        return ""
+    return f"""
+CONTEXTO DEL EQUIPO DE INVESTIGACIÓN (objetivos, participantes, guía de pautas — ancla todo el análisis en esto; usá los nombres y datos de participantes de acá como referencia canónica):
+{brief}
+"""
+
+
 def _glossary_line():
     from config import QUALBOT_GLOSSARY
     if not QUALBOT_GLOSSARY:
@@ -52,7 +61,7 @@ def _run_analysis(client, content, max_tokens, context=""):
     return _parse_json(raw, context=context)
 
 
-def analyze_transcript(title, speakers, blocks, summary, topics):
+def analyze_transcript(title, speakers, blocks, summary, topics, brief=""):
     """Análisis solo de texto — se usa cuando no hay video disponible"""
     import anthropic
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
@@ -61,12 +70,13 @@ def analyze_transcript(title, speakers, blocks, summary, topics):
     speakers_list   = ", ".join(speakers) if speakers else "No identificados"
     topics_list     = ", ".join(topics)   if topics   else "No identificados"
 
-    prompt = _build_text_prompt(title, speakers_list, topics_list, summary, transcript_text)
+    prompt = _build_text_prompt(title, speakers_list, topics_list, summary,
+                                transcript_text, brief=brief)
 
     return _run_analysis(client, prompt, max_tokens=64000, context=title)
 
 
-def analyze_integrated(title, speakers, blocks, summary, topics, frames):
+def analyze_integrated(title, speakers, blocks, summary, topics, frames, brief=""):
     """Análisis integrado texto + video — un solo llamado a Claude con todo"""
     import anthropic
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
@@ -87,7 +97,7 @@ def analyze_integrated(title, speakers, blocks, summary, topics, frames):
 SESIÓN: {title}
 PARTICIPANTES: {speakers_list}
 TEMAS: {topics_list}
-RESUMEN READ.AI: {summary}{_glossary_line()}
+RESUMEN READ.AI: {summary}{_glossary_line()}{_brief_section(brief)}
 
 TRANSCRIPCIÓN COMPLETA:
 {transcript_text}
@@ -231,7 +241,13 @@ Respondé ÚNICAMENTE con un JSON válido con esta estructura:
   "nota_metodologica": "observaciones sobre calidad de datos, sesgos detectados, limitaciones"
 }}
 
-Sé específico. Citá momentos reales. Cruzá siempre lo verbal con lo visual cuando tengas ambos. Los hallazgos más valiosos son los que solo se pueden ver combinando texto y cara."""
+Sé específico. Citá momentos reales. Cruzá siempre lo verbal con lo visual cuando tengas ambos. Los hallazgos más valiosos son los que solo se pueden ver combinando texto y cara.
+
+REGLAS DE CALIDAD (obligatorias):
+1. Cada hallazgo se desarrolla UNA sola vez, en la sección que mejor le corresponde. Las demás secciones no lo repiten — a lo sumo lo referencian en una frase. Un reporte que repite el mismo hallazgo en varias secciones es un mal reporte.
+2. Los frames son muestras espaciadas (~80 segundos entre uno y otro): nunca afirmes que un gesto coincide "exactamente" con una frase. Usá "cerca de [MM:SS]" y presentá la inferencia texto-video como hipótesis, no como certeza.
+3. Toda cita textual debe copiarse LITERAL de la transcripción, con el hablante EXACTO del bloque del que la tomaste y el timestamp de ese bloque. Nunca atribuyas una cita a otro participante ni ajustes el timestamp de memoria.
+4. No inventes especificidad: si la transcripción no dice una cifra o un dato, no lo agregues en tu interpretación."""
     })
 
     # Agregar frames
@@ -266,13 +282,13 @@ def _format_transcript(blocks):
     return text
 
 
-def _build_text_prompt(title, speakers_list, topics_list, summary, transcript_text):
+def _build_text_prompt(title, speakers_list, topics_list, summary, transcript_text, brief=""):
     return f"""Sos un analista senior especializado en investigación cualitativa de mercado y comportamiento del consumidor. Tenés más de 15 años de experiencia conduciendo y analizando focus groups para marcas líderes.
 
 SESIÓN: {title}
 PARTICIPANTES: {speakers_list}
 TEMAS: {topics_list}
-RESUMEN READ.AI: {summary}{_glossary_line()}
+RESUMEN READ.AI: {summary}{_glossary_line()}{_brief_section(brief)}
 
 TRANSCRIPCIÓN COMPLETA:
 {transcript_text}
@@ -397,7 +413,12 @@ Realizá un análisis EXHAUSTIVO y PROFUNDO. Respondé ÚNICAMENTE con un JSON v
   ],
   "proximos_pasos_investigacion": ["pregunta o área que quedó abierta y merece exploración futura"],
   "nota_metodologica": "observaciones sobre la calidad de los datos, sesgos detectados, limitaciones del análisis"
-}}"""
+}}
+
+REGLAS DE CALIDAD (obligatorias):
+1. Cada hallazgo se desarrolla UNA sola vez, en la sección que mejor le corresponde. Las demás secciones no lo repiten — a lo sumo lo referencian en una frase.
+2. Toda cita textual debe copiarse LITERAL de la transcripción, con el hablante EXACTO del bloque del que la tomaste y el timestamp de ese bloque. Nunca atribuyas una cita a otro participante ni ajustes el timestamp de memoria.
+3. No inventes especificidad: si la transcripción no dice una cifra o un dato, no lo agregues en tu interpretación."""
 
 
 def _parse_json(raw, context=""):
