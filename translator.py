@@ -34,9 +34,16 @@ Respond ONLY with the translated JSON object. No preamble, no markdown fences.
 
 
 def _context_section(context):
-    if not context:
+    from config import QUALBOT_GLOSSARY
+    parts = []
+    if context:
+        parts.append(f"Session context (to disambiguate terminology): {context}")
+    if QUALBOT_GLOSSARY:
+        parts.append("Known names/terms in this session — normalize obvious "
+                     f"transcription mishearings to these exact spellings: {QUALBOT_GLOSSARY}")
+    if not parts:
         return ""
-    return f"\nSession context (to disambiguate terminology): {context}\n"
+    return "\n" + "\n".join(parts) + "\n"
 
 
 def translate_analysis(analysis, context=""):
@@ -82,6 +89,9 @@ Rules:
 3. Do not translate participant names.
 4. Output format: one line per segment, starting with the exact same marker [[N]], followed by the translation ONLY. Same number of segments as the input. Nothing else.
 5. NEVER start a translation with the speaker's name or any "Name:" prefix — the speaker labels are re-added later by the system. Output only the spoken words.
+6. If a segment is garbled or nonsensical (a transcription artifact), do NOT invent fluent English for it: translate what is recoverable and mark the broken part as [unintelligible].
+7. Profanity policy: translate ordinary swearing faithfully (it is research data), but NEVER translate slurs literally — replace the slur itself with [expletive] while keeping the rest of the sentence.
+8. For culturally local references (football clubs, TV shows, public agencies, local brands), add a brief clarification in square brackets the first time each appears.
 {session_context}{prev_section}
 Segments to translate:
 {chunk_text}"""

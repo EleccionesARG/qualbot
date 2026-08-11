@@ -238,11 +238,22 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
     emo_vis   = analysis.get("emocion_dominante_visual", "—") or "—"
     n_part    = str(len(speakers)) if speakers else str(len(analysis.get("participantes",[])))
 
-    S_kv = st("KV", fontSize=13, fontName="Helvetica-Bold", textColor=C_DARK, spaceAfter=1)
     S_kl = st("KL", fontSize=7,  textColor=C_MUTED, spaceAfter=0)
 
+    def _kpi(val):
+        # El modelo a veces devuelve emociones largas con paréntesis: recortar
+        # y achicar la letra para que la celda no se rompa
+        val = str(val)
+        if "(" in val:
+            val = val.split("(")[0].strip()
+        if len(val) > 60:
+            val = val[:57] + "..."
+        size = 13 if len(val) <= 22 else 9
+        return Paragraph(val, st(f"KV{size}", fontSize=size,
+                                 fontName="Helvetica-Bold", textColor=C_DARK, spaceAfter=1))
+
     kpi = Table([
-        [Paragraph(emo, S_kv), Paragraph(intens, S_kv), Paragraph(n_part, S_kv), Paragraph(emo_vis, S_kv)],
+        [_kpi(emo), _kpi(intens), _kpi(n_part), _kpi(emo_vis)],
         [Paragraph(L["kpi_emotion_text"], S_kl), Paragraph(L["kpi_intensity"], S_kl),
          Paragraph(L["kpi_participants"], S_kl), Paragraph(L["kpi_emotion_video"], S_kl)],
     ], colWidths=[PAGE_W*0.25]*4)

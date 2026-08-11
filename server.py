@@ -354,7 +354,7 @@ def process_zoom(data):
         from config import ENGLISH_MODE
         if ENGLISH_MODE:
             _generate_english_outputs(session_id, meeting_topic, date, speakers,
-                                      topics, analysis, url, blocks)
+                                      topics, summary, analysis, url, blocks)
 
         try:
             os.remove(video_path)
@@ -371,7 +371,7 @@ def process_zoom(data):
 
 
 def _generate_english_outputs(session_id, topic, date, speakers, topics,
-                              analysis, url, blocks):
+                              summary, analysis, url, blocks):
     """Genera y sube el PDF EN y la transcripción traducida. Cada artefacto
     falla de forma aislada (alerta a Slack) — los PDFs ES ya están en Drive.
 
@@ -386,13 +386,17 @@ def _generate_english_outputs(session_id, topic, date, speakers, topics,
     if topics:
         session_context += ". Topics discussed: " + ", ".join(topics)
 
-    # 6a. Análisis traducido → PDF EN. El summary de Read.ai va vacío porque
-    # viene en castellano y no pasa por la traducción.
+    # 6a. Análisis traducido → PDF EN. El summary de Read.ai viaja como clave
+    # extra del dict para traducirse en la misma llamada.
     try:
         print("🌐 Traduciendo análisis a inglés...")
-        analysis_en = translate_analysis(analysis, context=session_context)
+        payload = dict(analysis)
+        if summary:
+            payload["resumen_readai"] = summary
+        analysis_en = translate_analysis(payload, context=session_context)
+        summary_en = analysis_en.pop("resumen_readai", "")
         pdf_en = generate_pdf_report(session_id, topic, date, speakers, topics,
-                                     "", analysis_en, url, lang="en")
+                                     summary_en, analysis_en, url, lang="en")
         u = upload_report(pdf_en, f"QualBot_Integrado_{topic}_{session_id}_EN.pdf")
         print(f"✅ Reporte EN → Drive: {u}")
     except Exception as e:

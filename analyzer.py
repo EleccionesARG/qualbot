@@ -7,6 +7,14 @@ from notifier import notify_error
 ANALYSIS_MODEL = "claude-opus-5"
 
 
+def _glossary_line():
+    from config import QUALBOT_GLOSSARY
+    if not QUALBOT_GLOSSARY:
+        return ""
+    return ("\nNOMBRES/TÉRMINOS CANÓNICOS (la transcripción puede traerlos mal "
+            f"oídos; usá siempre estas grafías): {QUALBOT_GLOSSARY}")
+
+
 def _run_analysis(client, content, max_tokens, context=""):
     """Llama al modelo con streaming y devuelve el dict del análisis.
 
@@ -79,7 +87,7 @@ def analyze_integrated(title, speakers, blocks, summary, topics, frames):
 SESIÓN: {title}
 PARTICIPANTES: {speakers_list}
 TEMAS: {topics_list}
-RESUMEN READ.AI: {summary}
+RESUMEN READ.AI: {summary}{_glossary_line()}
 
 TRANSCRIPCIÓN COMPLETA:
 {transcript_text}
@@ -264,7 +272,7 @@ def _build_text_prompt(title, speakers_list, topics_list, summary, transcript_te
 SESIÓN: {title}
 PARTICIPANTES: {speakers_list}
 TEMAS: {topics_list}
-RESUMEN READ.AI: {summary}
+RESUMEN READ.AI: {summary}{_glossary_line()}
 
 TRANSCRIPCIÓN COMPLETA:
 {transcript_text}
