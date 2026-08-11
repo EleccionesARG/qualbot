@@ -152,17 +152,52 @@ def health():
     }), 200
 
 # ── Read.ai webhook — guarda transcripción y genera reporte de texto ───────────
+_readai_recent = {}  # fallback de dedupe si no hay Redis (por proceso)
+
+
+def _readai_lock(meeting_title, ttl=600):
+    """True si somos los primeros en procesar este título en la ventana ttl.
+
+    Read.ai reintenta el webhook si no recibe respuesta rápida; sin este
+    candado cada reintento generaba un reporte duplicado en Drive."""
+    safe = _normalize_title(meeting_title)
+    r = _get_redis()
+    if r:
+        try:
+            return bool(r.set(f"qualbot:readai_lock:{safe}", "1", nx=True, ex=ttl))
+        except Exception as e:
+            print(f"⚠️  Redis lock error: {e}")
+    import time
+    now = time.time()
+    if now - _readai_recent.get(safe, 0) < ttl:
+        return False
+    _readai_recent[safe] = now
+    return True
+
+
 @app.route("/webhook/readai", methods=["POST"])
 def readai_webhook():
-    from analyzer import analyze_transcript
-    from drive_uploader import upload_report
-    from report_generator import generate_pdf_report
-
     data = request.json
     if not data:
         return jsonify({"error": "Sin datos"}), 400
 
-    print(f"📥 Read.ai: {datetime.now().strftime('%H:%M:%S')}")
+    meeting_title = data.get("title", "Focus Group")
+    print(f"📥 Read.ai: {datetime.now().strftime('%H:%M:%S')} | {meeting_title}")
+
+    if not _readai_lock(meeting_title):
+        print(f"↩️  Webhook duplicado de Read.ai ignorado: {meeting_title}")
+        return jsonify({"status": "duplicado ignorado"}), 200
+
+    # Responder ya y procesar en background — si tardamos, Read.ai reintenta
+    threading.Thread(target=_process_readai, args=(data,), daemon=True).start()
+    return jsonify({"status": "procesando"}), 200
+
+
+def _process_readai(data):
+    from analyzer import analyze_transcript
+    from drive_uploader import upload_report
+    from report_generator import generate_pdf_report
+
     try:
         meeting_title = data.get("title", "Focus Group")
         meeting_date  = data.get("date", str(datetime.now().date()))
@@ -194,13 +229,11 @@ def readai_webhook():
         drive_url  = upload_report(pdf_path, f"QualBot_{meeting_title}_{meeting_date}.pdf")
 
         print(f"✅ Reporte texto → Drive: {drive_url}")
-        return jsonify({"status": "ok", "drive_url": drive_url}), 200
 
     except Exception as e:
         import traceback; tb = traceback.format_exc()
         print(tb)
         _notify_error("readai_webhook", e, tb)
-        return jsonify({"error": str(e)}), 500
 
 
 # ── Zoom webhook — dispara análisis integrado cuando la grabación está lista ───
@@ -240,6 +273,7 @@ def process_zoom(data):
         obj             = data.get("payload", {}).get("object", {})
         meeting_topic   = obj.get("topic", "Focus Group")
         recording_files = obj.get("recording_files", [])
+        download_token  = data.get("payload", {}).get("download_token", "")
 
         print(f"🎬 Iniciando análisis integrado: {meeting_topic}")
 
@@ -258,7 +292,8 @@ def process_zoom(data):
 
         # 1. Descargar
         print(f"⬇️  Descargando grabación de: {meeting_topic}")
-        download_recording(mp4.get("download_url",""), video_path)
+        download_recording(mp4.get("download_url",""), video_path,
+                           download_token=download_token)
 
         # 2. Extraer frames distribuidos uniformemente (configurable por env)
         n_frames = int(os.environ.get("QUALBOT_N_FRAMES", "72"))

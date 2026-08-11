@@ -16,13 +16,15 @@ def get_zoom_token():
     return resp.json()["access_token"]
 
 
-def download_recording(download_url, output_path):
+def download_recording(download_url, output_path, download_token=""):
     """Descarga la grabación de Zoom al servidor.
 
-    Las URLs de tipo webhook_download requieren el token como query param,
-    no como Authorization header. Usamos query param siempre — funciona en ambos casos.
+    Las URLs webhook_download del evento recording.completed exigen el
+    download_token que viene en el payload del webhook (el token OAuth
+    server-to-server devuelve 401 ahí). Para URLs obtenidas por API
+    (reprocesamiento manual) se usa el token OAuth.
     """
-    token = get_zoom_token()
+    token = download_token or get_zoom_token()
 
     # Append access_token como query param (compatible con webhook_download y API regular)
     separator = "&" if "?" in download_url else "?"
