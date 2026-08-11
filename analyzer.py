@@ -12,12 +12,23 @@ def _run_analysis(client, content, max_tokens, context=""):
 
     En claude-opus-5 el thinking viene activado por defecto y consume parte de
     max_tokens, por eso el headroom es mayor que el largo esperado del JSON."""
+    import time
+    t_start = time.time()
     with client.messages.stream(
         model=ANALYSIS_MODEL,
         max_tokens=max_tokens,
         messages=[{"role": "user", "content": content}],
     ) as stream:
+        # Señal de vida cada 60s: sin esto el paso es mudo por muchos minutos
+        # y no se puede distinguir "sigue pensando" de "se colgó"
+        last_beat = t_start
+        for _ in stream:
+            now = time.time()
+            if now - last_beat >= 60:
+                print(f"   🧠 análisis en curso... {int(now - t_start)}s")
+                last_beat = now
         response = stream.get_final_message()
+    print(f"   🧠 análisis completado en {int(time.time() - t_start)}s")
 
     if response.stop_reason == "refusal":
         notify_error(f"analysis refusal / {context}",
