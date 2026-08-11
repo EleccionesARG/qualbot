@@ -314,6 +314,31 @@ def process_zoom(data):
         if not blocks:
             print(f"⚠️  Transcripción no encontrada para '{meeting_topic}' — el reporte integrado no tendrá texto")
 
+        # 3.5 Transcripción propia con ElevenLabs Scribe (si hay API key).
+        # Reemplaza los bloques de Read.ai para el análisis y las traducciones;
+        # Read.ai queda como plan B y aporta los nombres reales de los hablantes.
+        from transcriber import transcriber_enabled, transcribe_recording, map_speaker_names
+        audio_path = None
+        if transcriber_enabled():
+            try:
+                m4a = next((f for f in recording_files if f.get("file_type") == "M4A"), None)
+                src_path = video_path
+                if m4a:
+                    audio_path = f"recordings/zoom_{session_id}.m4a"
+                    download_recording(m4a.get("download_url", ""), audio_path,
+                                       download_token=download_token)
+                    src_path = audio_path
+                el_blocks = transcribe_recording(src_path, num_speakers=len(speakers) or None)
+                if el_blocks:
+                    el_blocks = map_speaker_names(el_blocks, blocks)
+                    blocks = el_blocks
+                    print(f"✅ Usando transcripción propia ({len(blocks)} bloques)")
+            except Exception as e:
+                import traceback; tb = traceback.format_exc()
+                print(tb)
+                print("⚠️  Falló la transcripción propia — se usa la de Read.ai")
+                _notify_error(f"transcriber / {meeting_topic}", e, tb)
+
         # 4. UN SOLO llamado a Claude con texto + video
         print("🧠 Análisis integrado texto + video...")
         analysis = analyze_integrated(meeting_topic, speakers, blocks, summary, topics, frames)
@@ -333,6 +358,8 @@ def process_zoom(data):
 
         try:
             os.remove(video_path)
+            if audio_path:
+                os.remove(audio_path)
         except Exception:
             pass
 
