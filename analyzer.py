@@ -24,8 +24,10 @@ def _run_analysis(client, content, max_tokens, context=""):
                      f"stop_reason=refusal, stop_details={response.stop_details}")
         raise RuntimeError(f"El modelo rechazó el análisis: {response.stop_details}")
     if response.stop_reason == "max_tokens":
+        # JSON truncado a mitad de camino: abortar en vez de subir un PDF roto
         notify_error(f"analysis truncado / {context}",
                      f"stop_reason=max_tokens con max_tokens={max_tokens}")
+        raise RuntimeError(f"Análisis truncado en max_tokens={max_tokens}")
 
     raw = "".join(b.text for b in response.content if b.type == "text")
     return _parse_json(raw, context=context)
@@ -42,7 +44,7 @@ def analyze_transcript(title, speakers, blocks, summary, topics):
 
     prompt = _build_text_prompt(title, speakers_list, topics_list, summary, transcript_text)
 
-    return _run_analysis(client, prompt, max_tokens=24000, context=title)
+    return _run_analysis(client, prompt, max_tokens=64000, context=title)
 
 
 def analyze_integrated(title, speakers, blocks, summary, topics, frames):
@@ -225,7 +227,7 @@ Sé específico. Citá momentos reales. Cruzá siempre lo verbal con lo visual c
             }
         })
 
-    return _run_analysis(client, content, max_tokens=32000, context=title)
+    return _run_analysis(client, content, max_tokens=64000, context=title)
 
 
 def _format_transcript(blocks):
