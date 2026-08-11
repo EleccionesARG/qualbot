@@ -231,13 +231,18 @@ Sé específico. Citá momentos reales. Cruzá siempre lo verbal con lo visual c
 
 
 def _format_transcript(blocks):
+    # Read.ai manda start_time como época Unix en ms — llevar a tiempo relativo
+    # para que los [MM:SS] del texto se puedan cruzar con los frames del video
+    starts = [int(b.get("start_time", 0) or 0) for b in blocks]
+    t0 = min((s for s in starts if s > 0), default=0)
+
     text = ""
-    for block in blocks:
+    for block, start in zip(blocks, starts):
         speaker = block.get("speaker", {}).get("name", "?")
         words   = block.get("words", "")
-        start   = block.get("start_time", 0)
-        mins    = int(start // 60000)
-        secs    = int((start % 60000) // 1000)
+        rel     = max(0, start - t0)
+        mins    = int(rel // 60000)
+        secs    = int((rel % 60000) // 1000)
         text   += f"[{mins:02d}:{secs:02d}] {speaker}: {words}\n"
     return text
 

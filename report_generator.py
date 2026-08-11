@@ -146,6 +146,9 @@ PRIORIDAD_COLORS = {
 
 def st(name, **kw):
     kw.setdefault("fontName", "Helvetica")
+    # El leading default de ReportLab es 12pt fijo: los títulos grandes se
+    # pisaban con la línea siguiente. Proporcional al tamaño si no se indica.
+    kw.setdefault("leading", round(kw.get("fontSize", 10) * 1.25, 1))
     return ParagraphStyle(name, **kw)
 
 def safe(val):
@@ -585,9 +588,13 @@ def generate_transcript_document(session_id, title, date, translated_blocks, lan
         HRFlowable(width="100%", thickness=1, color=C_ACCENT, spaceAfter=10),
     ]
 
-    for b in translated_blocks:
-        start = int(b.get("start_time", 0) or 0)
-        mins, secs = divmod(start // 1000, 60)
+    # Read.ai manda start_time como época Unix en ms — llevar a tiempo relativo
+    starts = [int(b.get("start_time", 0) or 0) for b in translated_blocks]
+    t0 = min((s for s in starts if s > 0), default=0)
+
+    for b, start in zip(translated_blocks, starts):
+        rel = max(0, start - t0)
+        mins, secs = divmod(rel // 1000, 60)
         story.append(Paragraph(f"[{mins:02d}:{secs:02d}] {b.get('speaker','?')}", S_spk))
         story.append(body(b.get("text_en", "")))
 

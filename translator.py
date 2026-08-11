@@ -80,7 +80,8 @@ Rules:
 1. Translate each numbered segment FAITHFULLY and LITERALLY. Do not paraphrase, summarize, clean up, or omit anything — including hesitations, repetitions, and incomplete sentences. Preserve the colloquial, spoken register.
 2. For untranslatable Argentine idioms or slang, translate the meaning and, when helpful, add a brief clarification in square brackets, e.g. "che [hey]" or "un quilombo [a huge mess]".
 3. Do not translate participant names.
-4. Output format: one line per segment, starting with the exact same marker [[N]], followed by the translation ONLY (no speaker name — it will be re-added). Same number of segments as the input. Nothing else.
+4. Output format: one line per segment, starting with the exact same marker [[N]], followed by the translation ONLY. Same number of segments as the input. Nothing else.
+5. NEVER start a translation with the speaker's name or any "Name:" prefix — the speaker labels are re-added later by the system. Output only the spoken words.
 {session_context}{prev_section}
 Segments to translate:
 {chunk_text}"""
@@ -152,6 +153,22 @@ def _translate_chunk(client, chunk, prev_context, session_context=""):
     raise TranslationError(f"Chunk de {len(chunk)} bloques no se pudo alinear tras 2 intentos")
 
 
+def _strip_speaker_prefix(text, speaker):
+    """Quita un prefijo 'Nombre:' que el modelo a veces agrega pese al prompt.
+
+    Solo lo saca si el prefijo se parece al nombre del hablante (mismas
+    primeras letras, ej. 'Asistente'→'Assistant:'), para no comerse diálogo
+    real que empiece con dos puntos."""
+    m = re.match(r"^([^:\n]{1,30}):\s+", text)
+    if not m:
+        return text
+    prefix = m.group(1).strip().casefold()
+    name = (speaker or "").strip().casefold()
+    if name and (prefix == name or (len(prefix) >= 2 and prefix[:2] == name[:2])):
+        return text[m.end():]
+    return text
+
+
 def translate_transcript_blocks(blocks, context=""):
     """Traduce speaker_blocks de Read.ai en lotes.
 
@@ -169,10 +186,11 @@ def translate_transcript_blocks(blocks, context=""):
             )
         texts = _translate_chunk(client, chunk, prev_context, session_context=context)
         for b, text_en in zip(chunk, texts):
+            speaker = b.get("speaker", {}).get("name", "?")
             translated.append({
-                "speaker": b.get("speaker", {}).get("name", "?"),
+                "speaker": speaker,
                 "start_time": b.get("start_time", 0),
-                "text_en": text_en,
+                "text_en": _strip_speaker_prefix(text_en, speaker),
             })
         print(f"   ✅ Chunk {i}/{len(chunks)}")
     return translated
