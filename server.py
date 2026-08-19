@@ -143,12 +143,16 @@ def list_sessions():
 @app.route("/", methods=["GET"])
 @app.route("/health", methods=["GET"])
 def health():
-    from config import QUALBOT_LANG, ENGLISH_MODE, TRANSLATION_MODEL
+    from config import (QUALBOT_LANG, ENGLISH_MODE, TRANSLATION_MODEL,
+                        QUALBOT_GLOSSARY)
+    terms = [t for t in QUALBOT_GLOSSARY.split(",") if t.strip()]
     return jsonify({
         "status": "ok",
         "lang": QUALBOT_LANG,
         "english_mode": ENGLISH_MODE,
         "translation_model": TRANSLATION_MODEL if ENGLISH_MODE else None,
+        "glossary": {"set": bool(terms), "terms": len(terms)},
+        "briefs": _count_briefs(),
     }), 200
 
 # ── Caché del análisis: no re-pagar Opus si falla la subida a Drive ───────────
@@ -242,6 +246,17 @@ def save_brief(topic, text):
             print(f"📝 Brief guardado: {safe} ({len(text)} chars)")
         except Exception as e:
             print(f"⚠️  Redis brief error: {e}")
+
+
+def _count_briefs():
+    """Cuántos briefs vivos hay, para el /health (Redis; si no, los del proceso)."""
+    r = _get_redis()
+    if r:
+        try:
+            return len(r.keys(f"{BRIEF_PREFIX}*"))
+        except Exception as e:
+            print(f"⚠️  Redis brief count error: {e}")
+    return len(_brief_memory)
 
 
 def load_brief(topic):
