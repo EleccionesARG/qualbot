@@ -186,7 +186,10 @@ if __name__ == "__main__":
     if limit:
         blocks = blocks[:limit]
     print(f"Transcripción: {len(blocks)} bloques a traducir")
-    tb = translate_transcript_blocks(blocks)
+    tb, notas_tr = translate_transcript_blocks(blocks)
     assert len(tb) == len(blocks), f"se perdieron bloques: {len(tb)} != {len(blocks)}"
     p = generate_transcript_document("TEST", "Grupo 1", "2026-08-09", tb)
     print(f"✅ Transcript PDF: {p} ({len(tb)} bloques)")
+    from report_generator import generate_translation_notes_document
+    p = generate_translation_notes_document("TEST", "Grupo 1", "2026-08-09", notas_tr)
+    print(f"✅ Notas de traducción: {p} ({len(notas_tr)} notas)")

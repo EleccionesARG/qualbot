@@ -624,3 +624,58 @@ def generate_transcript_document(session_id, title, date, translated_blocks, lan
     doc.build(story)
     print(f"Transcript PDF generado: {path}")
     return path
+
+
+def generate_translation_notes_document(session_id, title, date, notas):
+    """PDF con los pasajes que el traductor marcó como dudosos.
+
+    Es un documento de revisión interna: modismos, lunfardo, ironías y audio
+    dudoso donde la traducción al inglés puede haber perdido o torcido algo.
+    notas: [{"speaker", "start_time", "original", "translation", "issue"}, ...]"""
+    os.makedirs("reportes", exist_ok=True)
+    path = f"reportes/QualBot_Notas_Traduccion_{session_id}.pdf"
+
+    doc = SimpleDocTemplate(path, pagesize=A4,
+          rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
+
+    S_title = st("T", fontSize=18, textColor=C_DARK, fontName="Helvetica-Bold", spaceAfter=4)
+    S_sub   = st("S", fontSize=10, textColor=C_MUTED, spaceAfter=4)
+    S_time  = st("TM", fontSize=9, fontName="Helvetica-Bold", textColor=C_ACCENT,
+                 spaceBefore=10, spaceAfter=2)
+    S_lbl   = st("L", fontSize=8, fontName="Helvetica-Bold", textColor=C_MUTED,
+                 spaceBefore=2)
+
+    story = [
+        Paragraph("QualBot — Notas de traducción", S_title),
+        Paragraph(f"{title}  |  {date}", S_sub),
+        HRFlowable(width="100%", thickness=1, color=C_ACCENT, spaceAfter=10),
+        body("Pasajes donde la traducción al inglés puede haber perdido o torcido algo: "
+             "modismos, lunfardo, ironías, referencias ambiguas y audio dudoso. "
+             "Revisar contra la transcripción en castellano antes de citar."),
+        Spacer(1, 8),
+    ]
+
+    if not notas:
+        story.append(body("El traductor no marcó pasajes dudosos en esta sesión."))
+    else:
+        starts = [int(n.get("start_time", 0) or 0) for n in notas]
+        t0 = min((s for s in starts if s > 0), default=0)
+        for n, start in zip(notas, starts):
+            rel = max(0, start - t0)
+            mins, secs = divmod(rel // 1000, 60)
+            story.append(Paragraph(f"[{mins:02d}:{secs:02d}] {n.get('speaker','?')}", S_time))
+            story.append(Paragraph("ORIGINAL", S_lbl))
+            story.append(body(n.get("original", "")))
+            story.append(Paragraph("TRADUCCIÓN", S_lbl))
+            story.append(body(n.get("translation", "")))
+            story.append(Paragraph("DUDA", S_lbl))
+            story.append(body(n.get("issue", "")))
+
+    story.append(Spacer(1, 16))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=C_MUTED, spaceAfter=6))
+    story.append(Paragraph(f"QualBot  |  {datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                           st("F", fontSize=8, textColor=C_MUTED, alignment=TA_CENTER)))
+
+    doc.build(story)
+    print(f"Notas de traducción PDF generado: {path} ({len(notas)} notas)")
+    return path

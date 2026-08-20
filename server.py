@@ -143,16 +143,44 @@ def list_sessions():
 @app.route("/", methods=["GET"])
 @app.route("/health", methods=["GET"])
 def health():
+    """Estado de la configuración: qué falta para que una sesión salga completa.
+
+    Es público (no hay QUALBOT_ADMIN_KEY): solo booleanos y conteos, nunca
+    valores de variables ni títulos de sesiones."""
     from config import (QUALBOT_LANG, ENGLISH_MODE, TRANSLATION_MODEL,
                         QUALBOT_GLOSSARY)
+    from analyzer import ANALYSIS_MODEL
+    from transcriber import transcriber_enabled, SCRIBE_MODEL
+
     terms = [t for t in QUALBOT_GLOSSARY.split(",") if t.strip()]
+    env = os.environ.get
+    scribe_on = transcriber_enabled()
     return jsonify({
         "status": "ok",
+        "commit": (env("RAILWAY_GIT_COMMIT_SHA", "") or "")[:7] or None,
         "lang": QUALBOT_LANG,
         "english_mode": ENGLISH_MODE,
+        "analysis_model": ANALYSIS_MODEL,
         "translation_model": TRANSLATION_MODEL if ENGLISH_MODE else None,
+        "transcriber": {"enabled": scribe_on,
+                        "model": SCRIBE_MODEL if scribe_on else None,
+                        "fallback": "Read.ai"},
+        "frames": int(env("QUALBOT_N_FRAMES", "72")),
         "glossary": {"set": bool(terms), "terms": len(terms)},
         "briefs": _count_briefs(),
+        "redis": bool(_get_redis()),
+        "integraciones": {
+            "anthropic": bool(env("ANTHROPIC_API_KEY")),
+            "zoom": all(bool(env(k)) for k in
+                        ("ZOOM_ACCOUNT_ID", "ZOOM_CLIENT_ID", "ZOOM_CLIENT_SECRET")),
+            "zoom_webhook_firmado": bool(env("ZOOM_WEBHOOK_SECRET")),
+            "drive": bool(env("GOOGLE_SERVICE_ACCOUNT_JSON") and env("GOOGLE_DRIVE_FOLDER_ID")),
+            "slack": bool(env("SLACK_WEBHOOK_URL")),
+        },
+        "endpoints_protegidos": bool(env("QUALBOT_ADMIN_KEY")),
+        "entregables_por_sesion": ([
+            "analisis_es", "transcripcion_es"] +
+            (["transcripcion_en", "analisis_en", "notas_traduccion"] if ENGLISH_MODE else [])),
     }), 200
 
 # ── Caché del análisis: no re-pagar Opus si falla la subida a Drive ───────────
@@ -600,6 +628,20 @@ def _generate_spanish_transcript(session_id, topic, date, blocks):
         _notify_error(f"transcript_es / {topic}", e, tb)
 
 
+def _generate_translation_notes(session_id, topic, date, notas):
+    """Sube el documento de dudas de traducción. Falla aislado."""
+    try:
+        from report_generator import generate_translation_notes_document
+        from drive_uploader import upload_report
+        doc_path = generate_translation_notes_document(session_id, topic, date, notas)
+        u = upload_report(doc_path, f"QualBot_Notas_Traduccion_{topic}_{session_id}.pdf")
+        print(f"✅ Notas de traducción ({len(notas)}) → Drive: {u}")
+    except Exception as e:
+        import traceback; tb = traceback.format_exc()
+        print(tb)
+        _notify_error(f"translation_notes / {topic}", e, tb)
+
+
 def _generate_english_outputs(session_id, topic, date, speakers, topics,
                               summary, analysis, url, blocks):
     """Genera y sube el PDF EN y la transcripción traducida. Cada artefacto
@@ -627,11 +669,13 @@ def _generate_english_outputs(session_id, topic, date, speakers, topics,
     if blocks:
         try:
             print(f"🌐 Traduciendo transcripción ({len(blocks)} bloques)...")
-            blocks_en = translate_transcript_blocks(blocks, context=session_context)
+            blocks_en, notas = translate_transcript_blocks(blocks, context=session_context)
             doc_path = generate_transcript_document(session_id, topic, date, blocks_en, lang="en")
             u = upload_report(doc_path, f"QualBot_Transcript_{topic}_{session_id}_EN.pdf")
             print(f"✅ Transcripción EN → Drive: {u}")
             transcript_en_text = format_translated_transcript(blocks_en)
+            # Dudas del traductor: modismos, ironías, audio dudoso
+            _generate_translation_notes(session_id, topic, date, notas)
         except Exception as e:
             import traceback; tb = traceback.format_exc()
             print(tb)

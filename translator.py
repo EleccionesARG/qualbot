@@ -108,6 +108,9 @@ Rules:
 6. If a segment is garbled or nonsensical (a transcription artifact), do NOT invent fluent English for it: translate what is recoverable and mark the broken part as [unintelligible].
 7. Profanity policy: translate ordinary swearing faithfully (it is research data), but NEVER translate slurs literally — replace the slur itself with [expletive] while keeping the rest of the sentence.
 8. For culturally local references (football clubs, TV shows, public agencies, local brands), add a brief clarification in square brackets the first time each appears.
+9. AFTER all the numbered segments, output a line containing exactly [[NOTES]] and then flag the passages where your translation is genuinely uncertain: Rioplatense idioms or lunfardo with no clean English equivalent, ambiguous references, irony or sarcasm that may not survive, culturally loaded words whose connotation is lost, and audio garbled enough that you had to guess. One note per line, in this exact format:
+[[N]] | <the Spanish fragment, verbatim> | <how you rendered it> | <why it is uncertain and any alternative reading — write THIS FIELD IN SPANISH, the reviewer is Argentine>
+Flag only real doubts: at most 5 per batch, and none at all if the batch was straightforward. Never add a note just to fill the section — a short list is the expected outcome.
 {session_context}{prev_section}
 Segments to translate:
 {chunk_text}"""
@@ -151,6 +154,33 @@ def _parse_chunk(raw, n_expected):
     return [found[i] for i in range(1, n_expected + 1)]
 
 
+NOTE_RE = re.compile(r"^\s*\[\[(\d+)\]\]\s*\|(.*)$")
+
+
+def _split_notes(raw):
+    """Separa las traducciones numeradas de la sección de notas."""
+    parts = raw.split("[[NOTES]]")
+    return parts[0], "[[NOTES]]".join(parts[1:])
+
+
+def _parse_notes(raw, n_expected):
+    """Notas de traducción del chunk: [[N]] | original | traducción | duda."""
+    notas = []
+    for line in (raw or "").splitlines():
+        m = NOTE_RE.match(line)
+        if not m:
+            continue
+        idx = int(m.group(1))
+        if not 1 <= idx <= n_expected:
+            continue
+        campos = [c.strip() for c in m.group(2).split("|")]
+        if len(campos) < 3 or not campos[2]:
+            continue
+        notas.append({"idx": idx, "original": campos[0],
+                      "translation": campos[1], "issue": " | ".join(campos[2:])})
+    return notas[:8]  # techo por chunk: si marca todo, no marcó nada
+
+
 def _translate_chunk(client, chunk, prev_context, session_context=""):
     prev_section = ""
     if prev_context:
@@ -172,9 +202,10 @@ def _translate_chunk(client, chunk, prev_context, session_context=""):
             messages=[{"role": "user", "content": prompt}],
         )
         raw = "".join(b.text for b in response.content if b.type == "text")
-        parsed = _parse_chunk(raw, len(chunk))
+        cuerpo, notas_raw = _split_notes(raw)
+        parsed = _parse_chunk(cuerpo, len(chunk))
         if parsed is not None:
-            return parsed
+            return parsed, _parse_notes(notas_raw, len(chunk))
         print(f"⚠️  Chunk desalineado (intento {attempt + 1}/2), reintentando...")
     raise TranslationError(f"Chunk de {len(chunk)} bloques no se pudo alinear tras 2 intentos")
 
@@ -211,19 +242,32 @@ def _strip_speaker_prefix(text, speaker):
 def translate_transcript_blocks(blocks, context=""):
     """Traduce speaker_blocks de Read.ai en lotes.
 
-    Devuelve [{"speaker": str, "start_time": ms, "text_en": str}, ...]."""
+    Devuelve (bloques, notas):
+    - bloques: [{"speaker": str, "start_time": ms, "text_en": str}, ...]
+    - notas:   [{"speaker", "start_time", "original", "translation", "issue"}, ...]
+      con los pasajes que el traductor marcó como dudosos."""
     client = _client()
     chunks = _chunk_blocks(blocks)
     print(f"🌐 Transcripción: {len(blocks)} bloques en {len(chunks)} chunks")
 
-    translated = []
+    translated, notas = [], []
     for i, chunk in enumerate(chunks, 1):
         prev_context = ""
         if translated:
             prev_context = "\n".join(
                 f"{t['speaker']}: {t['text_en']}" for t in translated[-2:]
             )
-        texts = _translate_chunk(client, chunk, prev_context, session_context=context)
+        texts, chunk_notas = _translate_chunk(client, chunk, prev_context,
+                                              session_context=context)
+        for n in chunk_notas:
+            b = chunk[n["idx"] - 1]
+            notas.append({
+                "speaker": b.get("speaker", {}).get("name", "?"),
+                "start_time": b.get("start_time", 0),
+                "original": n["original"],
+                "translation": n["translation"],
+                "issue": n["issue"],
+            })
         for b, text_en in zip(chunk, texts):
             speaker = b.get("speaker", {}).get("name", "?")
             translated.append({
@@ -231,5 +275,7 @@ def translate_transcript_blocks(blocks, context=""):
                 "start_time": b.get("start_time", 0),
                 "text_en": _strip_speaker_prefix(text_en, speaker),
             })
-        print(f"   ✅ Chunk {i}/{len(chunks)}")
-    return translated
+        print(f"   ✅ Chunk {i}/{len(chunks)}" +
+              (f" · {len(chunk_notas)} nota(s)" if chunk_notas else ""))
+    print(f"📝 Notas de traducción: {len(notas)}")
+    return translated, notas
