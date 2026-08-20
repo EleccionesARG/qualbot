@@ -220,6 +220,7 @@ def _regenerate_outputs(d):
                                        d["topics"], d["summary"], d["analysis"], d["url"])
         u = upload_report(pdf_path, f"QualBot_Integrado_{topic}_{session_id}.pdf")
         print(f"✅ Reporte integrado (regen) → Drive: {u}")
+        _generate_spanish_transcript(session_id, topic, d["date"], d["blocks"])
         if ENGLISH_MODE:
             _generate_english_outputs(session_id, topic, d["date"], d["speakers"],
                                       d["topics"], d["summary"], d["analysis"],
@@ -555,6 +556,9 @@ def process_zoom(data):
         drive_url = upload_report(pdf_path, f"QualBot_Integrado_{meeting_topic}_{session_id}.pdf")
         print(f"✅ Reporte integrado → Drive: {drive_url}")
 
+        # 5.5 Transcripción en castellano (verbatim del transcriptor)
+        _generate_spanish_transcript(session_id, meeting_topic, date, blocks)
+
         # 6. Modo inglés: PDF EN + transcripción traducida (QUALBOT_LANG=en)
         from config import ENGLISH_MODE
         if ENGLISH_MODE:
@@ -573,6 +577,27 @@ def process_zoom(data):
         print(tb)
         print(f"❌ Error en análisis integrado de '{meeting_topic}': {e}")
         _notify_error(f"process_zoom / {meeting_topic}", e, tb)
+
+
+def _generate_spanish_transcript(session_id, topic, date, blocks):
+    """Sube la transcripción en castellano tal como la devolvió el transcriptor.
+
+    Es el verbatim crudo del grupo: mismo origen que la versión en inglés, así
+    las dos quedan alineadas bloque a bloque. Falla aislado — si revienta, los
+    reportes ya están en Drive."""
+    if not blocks:
+        print("⚠️  Sin transcripción — se omite el documento de transcripción ES")
+        return
+    try:
+        from report_generator import generate_transcript_document
+        from drive_uploader import upload_report
+        doc_path = generate_transcript_document(session_id, topic, date, blocks, lang="es")
+        u = upload_report(doc_path, f"QualBot_Transcript_{topic}_{session_id}_ES.pdf")
+        print(f"✅ Transcripción ES → Drive: {u}")
+    except Exception as e:
+        import traceback; tb = traceback.format_exc()
+        print(tb)
+        _notify_error(f"transcript_es / {topic}", e, tb)
 
 
 def _generate_english_outputs(session_id, topic, date, speakers, topics,

@@ -578,9 +578,12 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
 
 
 def generate_transcript_document(session_id, title, date, translated_blocks, lang="en"):
-    """PDF con la transcripción traducida: [MM:SS] Speaker + párrafo por bloque.
+    """PDF con la transcripción: [MM:SS] Speaker + párrafo por bloque.
 
-    translated_blocks: [{"speaker": str, "start_time": ms, "text_en": str}, ...]"""
+    Acepta dos formas de bloque: la traducida
+    ({"speaker": str, "start_time": ms, "text_en": str}) y la cruda del
+    transcriptor ({"speaker": {"name": str}, "start_time": ms, "words": str}),
+    para poder emitir también la transcripción en castellano."""
     L = LABELS.get(lang, LABELS["en"])
     os.makedirs("reportes", exist_ok=True)
     path = f"reportes/QualBot_Transcript_{session_id}_{lang}.pdf"
@@ -606,8 +609,12 @@ def generate_transcript_document(session_id, title, date, translated_blocks, lan
     for b, start in zip(translated_blocks, starts):
         rel = max(0, start - t0)
         mins, secs = divmod(rel // 1000, 60)
-        story.append(Paragraph(f"[{mins:02d}:{secs:02d}] {b.get('speaker','?')}", S_spk))
-        story.append(body(b.get("text_en", "")))
+        spk = b.get("speaker", "?")
+        if isinstance(spk, dict):
+            spk = spk.get("name", "?")
+        text = b.get("text_en") or b.get("text") or b.get("words") or ""
+        story.append(Paragraph(f"[{mins:02d}:{secs:02d}] {spk}", S_spk))
+        story.append(body(text))
 
     story.append(Spacer(1, 16))
     story.append(HRFlowable(width="100%", thickness=0.5, color=C_MUTED, spaceAfter=6))
