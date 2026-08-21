@@ -33,6 +33,7 @@ def _normalize_title(title):
 
 
 from notifier import notify_error as _notify_error
+from notifier import notify as _notify, carpeta_drive as _carpeta_drive
 
 
 def _verify_zoom_signature(req):
@@ -203,7 +204,7 @@ def errores():
 def probar_alerta():
     """Manda un mensaje de prueba para verificar el canal de alertas."""
     from notifier import notify, canales
-    ok = notify("mensaje de prueba: el canal de alertas funciona.")
+    ok = notify("🤖 QualBot — mensaje de prueba: el canal de alertas funciona.")
     return jsonify({"enviado": bool(ok), "canales": canales()}), 200
 
 
@@ -272,11 +273,15 @@ def _regenerate_outputs(d):
                                        d["topics"], d["summary"], d["analysis"], d["url"])
         u = upload_report(pdf_path, f"QualBot_Integrado_{topic}_{session_id}.pdf")
         print(f"✅ Reporte integrado (regen) → Drive: {u}")
-        _generate_spanish_transcript(session_id, topic, d["date"], d["blocks"])
+        entregados = [("Análisis ES", u)]
+        entregados += _generate_spanish_transcript(session_id, topic, d["date"], d["blocks"])
         if ENGLISH_MODE:
-            _generate_english_outputs(session_id, topic, d["date"], d["speakers"],
-                                      d["topics"], d["summary"], d["analysis"],
-                                      d["url"], d["blocks"])
+            entregados += _generate_english_outputs(session_id, topic, d["date"],
+                                                    d["speakers"], d["topics"],
+                                                    d["summary"], d["analysis"],
+                                                    d["url"], d["blocks"])
+        _avisar_grupo_listo(f"{topic} (regenerado)", entregados,
+                            "desde caché", len(d.get("blocks") or []), [])
     except Exception as e:
         import traceback; tb = traceback.format_exc()
         print(tb)
@@ -479,6 +484,8 @@ def _process_readai(data):
         drive_url  = upload_report(pdf_path, f"QualBot_{meeting_title}_{meeting_date}.pdf")
 
         print(f"✅ Reporte texto → Drive: {drive_url}")
+        _notify(f"📄 {meeting_title}\nReporte interino (solo texto) listo.\n{drive_url}"
+                "\n\nFalta que Zoom termine de procesar la grabación.")
 
     except Exception as e:
         import traceback; tb = traceback.format_exc()
@@ -526,6 +533,8 @@ def process_zoom(data):
         download_token  = data.get("payload", {}).get("download_token", "")
 
         print(f"🎬 Iniciando análisis integrado: {meeting_topic}")
+        _notify(f"🎬 {meeting_topic}\nGrabación lista, empiezo el análisis integrado. "
+                "Esto tarda un rato.")
 
         # Buscar el MP4 principal
         mp4 = next((f for f in recording_files
@@ -573,6 +582,10 @@ def process_zoom(data):
         # Read.ai queda como plan B y aporta los nombres reales de los hablantes.
         from transcriber import transcriber_enabled, transcribe_recording, map_speaker_names
         audio_path = None
+        # Qué motor terminó transcribiendo: el aviso final lo dice, porque el
+        # fallback a Read.ai es silencioso y no se nota mirando Drive.
+        fuente_transcripcion = "Read.ai (ElevenLabs desactivado)" if not transcriber_enabled() \
+            else "Read.ai (⚠️ falló ElevenLabs)"
         if transcriber_enabled():
             try:
                 m4a = next((f for f in recording_files if f.get("file_type") == "M4A"), None)
@@ -586,6 +599,7 @@ def process_zoom(data):
                 if el_blocks:
                     el_blocks = map_speaker_names(el_blocks, blocks, brief=brief)
                     blocks = el_blocks
+                    fuente_transcripcion = "ElevenLabs Scribe"
                     print(f"✅ Usando transcripción propia ({len(blocks)} bloques)")
             except Exception as e:
                 import traceback; tb = traceback.format_exc()
@@ -619,15 +633,20 @@ def process_zoom(data):
                                          speakers, topics, summary, analysis, url)
         drive_url = upload_report(pdf_path, f"QualBot_Integrado_{meeting_topic}_{session_id}.pdf")
         print(f"✅ Reporte integrado → Drive: {drive_url}")
+        entregados = [("Análisis ES", drive_url)]
 
         # 5.5 Transcripción en castellano (verbatim del transcriptor)
-        _generate_spanish_transcript(session_id, meeting_topic, date, blocks)
+        entregados += _generate_spanish_transcript(session_id, meeting_topic, date, blocks)
 
         # 6. Modo inglés: PDF EN + transcripción traducida (QUALBOT_LANG=en)
         from config import ENGLISH_MODE
         if ENGLISH_MODE:
-            _generate_english_outputs(session_id, meeting_topic, date, speakers,
-                                      topics, summary, analysis, url, blocks)
+            entregados += _generate_english_outputs(session_id, meeting_topic, date,
+                                                    speakers, topics, summary,
+                                                    analysis, url, blocks)
+
+        _avisar_grupo_listo(meeting_topic, entregados, fuente_transcripcion,
+                            len(blocks), correcciones)
 
         try:
             os.remove(video_path)
@@ -651,17 +670,34 @@ def _generate_spanish_transcript(session_id, topic, date, blocks):
     reportes ya están en Drive."""
     if not blocks:
         print("⚠️  Sin transcripción — se omite el documento de transcripción ES")
-        return
+        return []
     try:
         from report_generator import generate_transcript_document
         from drive_uploader import upload_report
         doc_path = generate_transcript_document(session_id, topic, date, blocks, lang="es")
         u = upload_report(doc_path, f"QualBot_Transcript_{topic}_{session_id}_ES.pdf")
         print(f"✅ Transcripción ES → Drive: {u}")
+        return [("Transcripción ES", u)]
     except Exception as e:
         import traceback; tb = traceback.format_exc()
         print(tb)
         _notify_error(f"transcript_es / {topic}", e, tb)
+        return []
+
+
+def _avisar_grupo_listo(topic, entregados, fuente, n_bloques, correcciones):
+    """Aviso final: qué quedó en Drive, con links, y con qué motor se transcribió."""
+    lineas = [f"✅ {topic} — listo",
+              f"Transcripción: {fuente} · {n_bloques} bloques"]
+    if correcciones:
+        lineas.append(f"Validador: {len(correcciones)} citas corregidas")
+    lineas.append("")
+    for etiqueta, link in entregados:
+        lineas.append(f"• {etiqueta}: {link or '(no se subió a Drive)'}")
+    carpeta = _carpeta_drive()
+    if carpeta:
+        lineas += ["", f"Carpeta: {carpeta}"]
+    _notify("\n".join(lineas))
 
 
 def _generate_translation_notes(session_id, topic, date, notas):
@@ -672,10 +708,12 @@ def _generate_translation_notes(session_id, topic, date, notas):
         doc_path = generate_translation_notes_document(session_id, topic, date, notas)
         u = upload_report(doc_path, f"QualBot_Notas_Traduccion_{topic}_{session_id}.pdf")
         print(f"✅ Notas de traducción ({len(notas)}) → Drive: {u}")
+        return [(f"Notas de traducción ({len(notas)})", u)]
     except Exception as e:
         import traceback; tb = traceback.format_exc()
         print(tb)
         _notify_error(f"translation_notes / {topic}", e, tb)
+        return []
 
 
 def _generate_english_outputs(session_id, topic, date, speakers, topics,
@@ -701,6 +739,7 @@ def _generate_english_outputs(session_id, topic, date, speakers, topics,
     # 6a. Transcripción traducida PRIMERO: además de ser un entregable, sirve
     # de referencia para que las citas del reporte EN salgan palabra por
     # palabra iguales a la transcripción.
+    entregados = []
     transcript_en_text = ""
     if blocks:
         try:
@@ -710,8 +749,9 @@ def _generate_english_outputs(session_id, topic, date, speakers, topics,
             u = upload_report(doc_path, f"QualBot_Transcript_{topic}_{session_id}_EN.pdf")
             print(f"✅ Transcripción EN → Drive: {u}")
             transcript_en_text = format_translated_transcript(blocks_en)
+            entregados.append(("Transcripción EN", u))
             # Dudas del traductor: modismos, ironías, audio dudoso
-            _generate_translation_notes(session_id, topic, date, notas)
+            entregados += _generate_translation_notes(session_id, topic, date, notas)
         except Exception as e:
             import traceback; tb = traceback.format_exc()
             print(tb)
@@ -733,10 +773,12 @@ def _generate_english_outputs(session_id, topic, date, speakers, topics,
                                      summary_en, analysis_en, url, lang="en")
         u = upload_report(pdf_en, f"QualBot_Integrado_{topic}_{session_id}_EN.pdf")
         print(f"✅ Reporte EN → Drive: {u}")
+        entregados.append(("Análisis EN", u))
     except Exception as e:
         import traceback; tb = traceback.format_exc()
         print(tb)
         _notify_error(f"translate_analysis / {topic}", e, tb)
+    return entregados
 
 
 # ── Listar grabaciones recientes ───────────────────────────────────────────────

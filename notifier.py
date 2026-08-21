@@ -92,8 +92,14 @@ def notify_error(context, error, tb=""):
 
 
 def notify(text):
-    """Aviso suelto (pruebas, hitos). No se registra como error."""
-    return _telegram(f"🤖 QualBot — {text}") or _slack(f"🤖 QualBot — {text}")
+    """Aviso de progreso o hito. No se registra como error."""
+    return _telegram(text) or _slack(text)
+
+
+def carpeta_drive():
+    """Link a la carpeta de Drive donde caen los reportes."""
+    fid = os.environ.get("GOOGLE_DRIVE_FOLDER_ID", "")
+    return f"https://drive.google.com/drive/folders/{fid}" if fid else ""
 
 
 def canales():
