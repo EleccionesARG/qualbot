@@ -530,7 +530,13 @@ def process_zoom(data):
         obj             = data.get("payload", {}).get("object", {})
         meeting_topic   = obj.get("topic", "Focus Group")
         recording_files = obj.get("recording_files", [])
-        download_token  = data.get("payload", {}).get("download_token", "")
+        # Zoom manda download_token al tope del evento, hermano de "payload".
+        # Leerlo de adentro devolvía "" y se caía al token OAuth, que las URLs
+        # webhook_download rechazan con 401.
+        download_token  = (data.get("download_token")
+                           or data.get("payload", {}).get("download_token", ""))
+        print(f"🔑 download_token del webhook: "
+              f"{'sí (' + str(len(download_token)) + ' chars)' if download_token else 'NO — se usará OAuth'}")
 
         print(f"🎬 Iniciando análisis integrado: {meeting_topic}")
         _notify(f"🎬 {meeting_topic}\nGrabación lista, empiezo el análisis integrado. "
