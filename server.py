@@ -149,7 +149,7 @@ def health():
     Es público (no hay QUALBOT_ADMIN_KEY): solo booleanos y conteos, nunca
     valores de variables ni títulos de sesiones."""
     from config import (QUALBOT_LANG, ENGLISH_MODE, TRANSLATION_MODEL,
-                        QUALBOT_GLOSSARY)
+                        QUALBOT_GLOSSARY, ANALYSIS_EN)
     from analyzer import ANALYSIS_MODEL
     from transcriber import transcriber_enabled, SCRIBE_MODEL
     from notifier import canales
@@ -180,9 +180,9 @@ def health():
         },
         "alertas": dict(canales(), errores_recientes=_contar_errores()),
         "endpoints_protegidos": bool(env("QUALBOT_ADMIN_KEY")),
-        "entregables_por_sesion": ([
-            "analisis_es", "transcripcion_es"] +
-            (["transcripcion_en", "analisis_en", "notas_traduccion"] if ENGLISH_MODE else [])),
+        "entregables_por_sesion": ["analisis_es", "transcripcion_es"] + (
+            ["transcripcion_en", "notas_traduccion"] + (["analisis_en"] if ANALYSIS_EN else [])
+            if ENGLISH_MODE else []),
     }), 200
 
 @app.route("/errores", methods=["GET"])
@@ -767,6 +767,10 @@ def _generate_english_outputs(session_id, topic, date, speakers, topics,
 
     # 6b. Análisis traducido → PDF EN. El summary de Read.ai viaja como clave
     # extra del dict para traducirse en la misma llamada.
+    from config import ANALYSIS_EN
+    if not ANALYSIS_EN:
+        print("⏭️  Análisis en inglés desactivado (QUALBOT_ANALYSIS_EN)")
+        return entregados
     try:
         print("🌐 Traduciendo análisis a inglés...")
         payload = dict(analysis)
