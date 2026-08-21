@@ -151,6 +151,7 @@ def health():
                         QUALBOT_GLOSSARY)
     from analyzer import ANALYSIS_MODEL
     from transcriber import transcriber_enabled, SCRIBE_MODEL
+    from notifier import canales
 
     terms = [t for t in QUALBOT_GLOSSARY.split(",") if t.strip()]
     env = os.environ.get
@@ -175,13 +176,36 @@ def health():
                         ("ZOOM_ACCOUNT_ID", "ZOOM_CLIENT_ID", "ZOOM_CLIENT_SECRET")),
             "zoom_webhook_firmado": bool(env("ZOOM_WEBHOOK_SECRET")),
             "drive": bool(env("GOOGLE_SERVICE_ACCOUNT_JSON") and env("GOOGLE_DRIVE_FOLDER_ID")),
-            "slack": bool(env("SLACK_WEBHOOK_URL")),
         },
+        "alertas": dict(canales(), errores_recientes=_contar_errores()),
         "endpoints_protegidos": bool(env("QUALBOT_ADMIN_KEY")),
         "entregables_por_sesion": ([
             "analisis_es", "transcripcion_es"] +
             (["transcripcion_en", "analisis_en", "notas_traduccion"] if ENGLISH_MODE else [])),
     }), 200
+
+@app.route("/errores", methods=["GET"])
+def errores():
+    """Últimos errores registrados (30 días). La red de seguridad si el push falla."""
+    from notifier import ERRORS_KEY
+    r = _get_redis()
+    if not r:
+        return jsonify({"error": "Redis no configurado"}), 200
+    try:
+        crudos = r.lrange(ERRORS_KEY, 0, 49)
+        return jsonify({"errores": [json.loads(e) for e in crudos],
+                        "total": len(crudos)}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/probar-alerta", methods=["GET"])
+def probar_alerta():
+    """Manda un mensaje de prueba para verificar el canal de alertas."""
+    from notifier import notify, canales
+    ok = notify("mensaje de prueba: el canal de alertas funciona.")
+    return jsonify({"enviado": bool(ok), "canales": canales()}), 200
+
 
 # ── Caché del análisis: no re-pagar Opus si falla la subida a Drive ───────────
 ANALYSIS_PREFIX = "qualbot:analysis:"
@@ -275,6 +299,18 @@ def save_brief(topic, text):
             print(f"📝 Brief guardado: {safe} ({len(text)} chars)")
         except Exception as e:
             print(f"⚠️  Redis brief error: {e}")
+
+
+def _contar_errores():
+    """Cuántos errores hay registrados, para el /health."""
+    from notifier import ERRORS_KEY
+    r = _get_redis()
+    if not r:
+        return None
+    try:
+        return r.llen(ERRORS_KEY)
+    except Exception:
+        return None
 
 
 def _count_briefs():
