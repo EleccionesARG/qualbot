@@ -280,8 +280,10 @@ def _regenerate_outputs(d):
                                                     d["speakers"], d["topics"],
                                                     d["summary"], d["analysis"],
                                                     d["url"], d["blocks"])
-        _avisar_grupo_listo(f"{topic} (regenerado)", entregados,
-                            "desde caché", len(d.get("blocks") or []), [])
+        from transcriber import hablantes_sin_nombre
+        _avisar_grupo_listo(f"{topic} (regenerado)", entregados, "desde caché",
+                            len(d.get("blocks") or []), [],
+                            hablantes_sin_nombre(d.get("blocks") or []))
     except Exception as e:
         import traceback; tb = traceback.format_exc()
         print(tb)
@@ -651,8 +653,9 @@ def process_zoom(data):
                                                     speakers, topics, summary,
                                                     analysis, url, blocks)
 
+        from transcriber import hablantes_sin_nombre
         _avisar_grupo_listo(meeting_topic, entregados, fuente_transcripcion,
-                            len(blocks), correcciones)
+                            len(blocks), correcciones, hablantes_sin_nombre(blocks))
 
         try:
             os.remove(video_path)
@@ -691,12 +694,16 @@ def _generate_spanish_transcript(session_id, topic, date, blocks):
         return []
 
 
-def _avisar_grupo_listo(topic, entregados, fuente, n_bloques, correcciones):
+def _avisar_grupo_listo(topic, entregados, fuente, n_bloques, correcciones,
+                        sin_nombre=()):
     """Aviso final: qué quedó en Drive, con links, y con qué motor se transcribió."""
     lineas = [f"✅ {topic} — listo",
               f"Transcripción: {fuente} · {n_bloques} bloques"]
     if correcciones:
         lineas.append(f"Validador: {len(correcciones)} citas corregidas")
+    if sin_nombre:
+        detalle = ", ".join(f"{n} ({c} intervenciones)" for n, c in sin_nombre)
+        lineas.append(f"⚠️ Sin nombre: {detalle} — esas citas salen sin atribuir")
     lineas.append("")
     for etiqueta, link in entregados:
         lineas.append(f"• {etiqueta}: {link or '(no se subió a Drive)'}")

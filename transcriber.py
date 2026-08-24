@@ -92,7 +92,11 @@ def _label(speaker_id):
 
 MAPPING_PROMPT = """Below is a transcript of a meeting (in Spanish) produced by a high-quality engine that labels speakers generically ({labels}), plus reference material that reveals the participants' real names.
 
-Match each generic label to a real participant name, comparing what each speaker says and when (self-introductions, how others address them, roles described in the notes). Respond ONLY with a JSON object mapping every label to a name, e.g. {{"Hablante 1": "Juan", "Hablante 2": "Ana"}}. Prefer real person names over usernames or generic labels when the reference material gives both. If you cannot confidently match a label, map it to itself.
+Match each generic label to a real participant name, comparing what each speaker says and when (self-introductions, how others address them, roles described in the notes). Respond ONLY with a JSON object mapping every label to a name, e.g. {{"Hablante 1": "Juan", "Hablante 2": "Ana"}}. Prefer real person names over usernames or generic labels when the reference material gives both.
+
+Important: the engine that produced these labels sometimes splits ONE person into two labels when people talk over each other. If there are more labels than people in the room according to the reference material, assume that is what happened: map the extra label to the same name as the voice it most resembles — same speech patterns, same role in the conversation, and note that a person never answers themselves. Two labels mapping to the same name is expected and correct in that case.
+
+Map a label to itself only as a last resort, when you genuinely cannot tell who it is — a label left generic means its quotes end up unattributed.
 
 === TRANSCRIPT (samples per speaker) ===
 {samples_a}
@@ -115,6 +119,23 @@ def _samples_by_speaker(blocks, min_chars=40, per_speaker=4):
             continue
         samples.setdefault(name, []).append(f"[{_rel_mmss(s, t0)}] {words}")
     return samples
+
+
+GENERIC_RE = re.compile(r"^Hablante \d+$")
+
+
+def hablantes_sin_nombre(blocks):
+    """Etiquetas que quedaron genéricas, con cuántas intervenciones tiene cada una.
+
+    Si el transcriptor detecta más voces que participantes hay en la sala, alguna
+    queda sin nombre y sus citas salen sin atribuir. Conviene saberlo en el
+    momento y no al leer el reporte."""
+    conteo = {}
+    for b in blocks:
+        nombre = str((b.get("speaker") or {}).get("name", ""))
+        if GENERIC_RE.match(nombre):
+            conteo[nombre] = conteo.get(nombre, 0) + 1
+    return sorted(conteo.items(), key=lambda kv: -kv[1])
 
 
 def map_speaker_names(blocks, readai_blocks, brief=""):
