@@ -110,12 +110,15 @@ def get_meeting_participants(uuid="", meeting_id=""):
         intentos += [f"https://api.zoom.us/v2/report/meetings/{meeting_id}/participants",
                      f"https://api.zoom.us/v2/past_meetings/{meeting_id}/participants"]
 
+    detalle = []
     for url in intentos:
         try:
             r = requests.get(url, headers=headers,
                              params={"page_size": 300}, timeout=30)
             if r.status_code != 200:
-                print(f"↩️  Padrón {url.split('/v2/')[1][:28]}… → {r.status_code}")
+                via = url.split("/v2/")[1].split("/participants")[0]
+                detalle.append(f"{via} → {r.status_code}: {r.text[:160]}")
+                print(f"↩️  Padrón {via} → {r.status_code} {r.text[:160]}")
                 continue
             nombres, vistos = [], set()
             for p in r.json().get("participants", []):
@@ -129,4 +132,5 @@ def get_meeting_participants(uuid="", meeting_id=""):
         except Exception as e:
             print(f"⚠️  Error pidiendo el padrón: {e}")
     print("⚠️  Sin padrón de Zoom — el mapeo usa solo el brief")
+    get_meeting_participants.ultimo_detalle = detalle
     return []

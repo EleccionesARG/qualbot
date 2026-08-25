@@ -227,7 +227,10 @@ def padron():
             return jsonify({"error": f"No encontré '{topic_query}'"}), 404
         nombres = get_meeting_participants(match.get("uuid", ""), match.get("id", ""))
         return jsonify({"topic": match.get("topic"), "personas": len(nombres),
-                        "padron": nombres}), 200
+                        "padron": nombres,
+                        "uuid": match.get("uuid"), "id": match.get("id"),
+                        "detalle": getattr(get_meeting_participants,
+                                           "ultimo_detalle", [])}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
