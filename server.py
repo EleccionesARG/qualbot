@@ -795,7 +795,12 @@ def _generate_english_outputs(session_id, topic, date, speakers, topics,
         session_context += ". Topics discussed: " + ", ".join(topics)
     brief = load_brief(topic)
     if brief:
-        session_context += "\nResearch team brief for this session:\n" + brief[:2500]
+        # Objetivos + la tabla de nombres: sin los nombres, el traductor no sabe
+        # qué palabras son personas y las trata como texto común.
+        from transcriber import _brief_para_mapeo
+        session_context += ("\nResearch team brief for this session:\n"
+                            + brief[:1400].rstrip() + "\n[...]\n"
+                            + _brief_para_mapeo(brief, limite=2600, por_seccion=1300))
 
     # 6a. Transcripción traducida PRIMERO: además de ser un entregable, sirve
     # de referencia para que las citas del reporte EN salgan palabra por
