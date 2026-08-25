@@ -200,6 +200,38 @@ def errores():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/padron", methods=["GET"])
+def padron():
+    """Padrón de Zoom de una reunión, sin procesar nada.
+
+    Sirve para verificar que la app tiene el permiso de reportes antes de
+    gastar un reprocesamiento entero."""
+    if not _check_admin_key(request):
+        return jsonify({"error": "falta ?key="}), 401
+    import requests as req
+    from datetime import timedelta
+    from zoom_downloader import get_meeting_participants
+    topic_query = request.args.get("topic", "").lower()
+    if not topic_query:
+        return jsonify({"error": "Falta ?topic="}), 400
+    try:
+        token    = _zoom_token()
+        today    = datetime.now().strftime("%Y-%m-%d")
+        week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+        resp = req.get("https://api.zoom.us/v2/users/me/recordings",
+                       headers={"Authorization": f"Bearer {token}"},
+                       params={"from": week_ago, "to": today})
+        match = next((m for m in resp.json().get("meetings", [])
+                      if topic_query in m.get("topic", "").lower()), None)
+        if not match:
+            return jsonify({"error": f"No encontré '{topic_query}'"}), 404
+        nombres = get_meeting_participants(match.get("uuid", ""), match.get("id", ""))
+        return jsonify({"topic": match.get("topic"), "personas": len(nombres),
+                        "padron": nombres}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/probar-alerta", methods=["GET"])
 def probar_alerta():
     """Manda un mensaje de prueba para verificar el canal de alertas."""
