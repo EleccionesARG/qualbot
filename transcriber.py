@@ -165,6 +165,29 @@ def hablantes_sin_nombre(blocks):
     return sorted(conteo.items(), key=lambda kv: -kv[1])
 
 
+SECCIONES_DE_NOMBRES = ("NOMBRES CANÓNICOS", "NOMBRES CANONICOS",
+                        "NO SON PARTICIPANTES", "PARTICIPANTES DE ESTE GRUPO",
+                        "EN LA SALA")
+
+
+def _brief_para_mapeo(brief, limite=7000, por_seccion=2600):
+    """La parte del brief que le sirve al mapeo: quién es quién.
+
+    El brief entero pesa 20 mil caracteres y arranca con objetivos y marco
+    metodológico. Mandar el principio era mandarle justo lo que no necesita: la
+    tabla de nombres vive al final. Se arman los pedazos por sección, en orden
+    de utilidad, hasta llenar el cupo."""
+    if not brief:
+        return ""
+    partes = []
+    for clave in SECCIONES_DE_NOMBRES:
+        i = brief.find(clave)
+        if i >= 0:
+            partes.append(brief[i:i + por_seccion])
+    texto = "\n\n".join(partes) if partes else brief
+    return texto[:limite]
+
+
 def map_speaker_names(blocks, readai_blocks, brief="", roster=None):
     """Renombra 'Hablante N' a los nombres reales, usando la transcripción
     nombrada de Read.ai y/o el brief del equipo de investigación.
@@ -197,8 +220,8 @@ def map_speaker_names(blocks, readai_blocks, brief="", roster=None):
                 "technical staff, client-side listeners), so expect fewer voices than names; "
                 "and the host may appear twice if they reconnected.")
         if brief:
-            reference += ("\n=== RESEARCH TEAM NOTES (participants and context) ===\n"
-                          + brief[:3000])
+            reference += ("\n=== RESEARCH TEAM NOTES (who is who — the naming standard) ===\n"
+                          + _brief_para_mapeo(brief))
         prompt = MAPPING_PROMPT.format(
             labels=", ".join(samples_a.keys()),
             samples_a=fmt(samples_a),
