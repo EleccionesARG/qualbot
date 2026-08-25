@@ -80,3 +80,53 @@ def get_recording_files(meeting_id):
     )
     resp.raise_for_status()
     return resp.json()
+
+
+def _encode_uuid(uuid):
+    """Los UUID de Zoom que empiezan con / o contienen // van doble-encodeados."""
+    from urllib.parse import quote
+    u = quote(str(uuid), safe="")
+    if str(uuid).startswith("/") or "//" in str(uuid):
+        u = quote(u, safe="")
+    return u
+
+
+def get_meeting_participants(uuid="", meeting_id=""):
+    """Nombres de quienes estuvieron en la reunión, según Zoom.
+
+    Es el padrón real: son los nombres que Claudia les pone al entrar, así que
+    manda sobre cualquier lista del brief. Reemplaza lo único que aportaba
+    Read.ai que Scribe no puede dar. Devuelve [] si la app no tiene el permiso
+    o si Zoom no lo conoce — el resto del pipeline sigue igual.
+    """
+    token = get_zoom_token()
+    headers = {"Authorization": f"Bearer {token}"}
+    intentos = []
+    if uuid:
+        u = _encode_uuid(uuid)
+        intentos += [f"https://api.zoom.us/v2/report/meetings/{u}/participants",
+                     f"https://api.zoom.us/v2/past_meetings/{u}/participants"]
+    if meeting_id:
+        intentos += [f"https://api.zoom.us/v2/report/meetings/{meeting_id}/participants",
+                     f"https://api.zoom.us/v2/past_meetings/{meeting_id}/participants"]
+
+    for url in intentos:
+        try:
+            r = requests.get(url, headers=headers,
+                             params={"page_size": 300}, timeout=30)
+            if r.status_code != 200:
+                print(f"↩️  Padrón {url.split('/v2/')[1][:28]}… → {r.status_code}")
+                continue
+            nombres, vistos = [], set()
+            for p in r.json().get("participants", []):
+                n = (p.get("name") or "").strip()
+                if n and n.lower() not in vistos:
+                    vistos.add(n.lower())
+                    nombres.append(n)
+            if nombres:
+                print(f"👥 Padrón de Zoom ({len(nombres)}): {', '.join(nombres)}")
+                return nombres
+        except Exception as e:
+            print(f"⚠️  Error pidiendo el padrón: {e}")
+    print("⚠️  Sin padrón de Zoom — el mapeo usa solo el brief")
+    return []

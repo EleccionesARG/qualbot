@@ -531,6 +531,8 @@ def process_zoom(data):
 
         obj             = data.get("payload", {}).get("object", {})
         meeting_topic   = obj.get("topic", "Focus Group")
+        meeting_uuid    = obj.get("uuid", "")
+        meeting_id      = obj.get("id", "")
         recording_files = obj.get("recording_files", [])
         # Zoom manda download_token al tope del evento, hermano de "payload".
         # Leerlo de adentro devolvía "" y se caía al token OAuth, que las URLs
@@ -581,6 +583,13 @@ def process_zoom(data):
         if not blocks:
             print(f"⚠️  Transcripción no encontrada para '{meeting_topic}' — el reporte integrado no tendrá texto")
 
+        # Padrón de Zoom: los nombres reales con los que entraron a la sala.
+        # Es lo único que aportaba Read.ai y que la transcripción no puede dar.
+        from zoom_downloader import get_meeting_participants
+        roster = get_meeting_participants(meeting_uuid, meeting_id)
+        if not speakers and roster:
+            speakers = list(roster)
+
         brief = load_brief(meeting_topic)
         if brief:
             print(f"📝 Brief de sesión encontrado ({len(brief)} chars)")
@@ -603,9 +612,11 @@ def process_zoom(data):
                     download_recording(m4a.get("download_url", ""), audio_path,
                                        download_token=download_token)
                     src_path = audio_path
-                el_blocks = transcribe_recording(src_path, num_speakers=len(speakers) or None)
+                pista = len(roster) or len(speakers) or None
+                el_blocks = transcribe_recording(src_path, num_speakers=pista)
                 if el_blocks:
-                    el_blocks = map_speaker_names(el_blocks, blocks, brief=brief)
+                    el_blocks = map_speaker_names(el_blocks, blocks, brief=brief,
+                                                  roster=roster)
                     blocks = el_blocks
                     fuente_transcripcion = "ElevenLabs Scribe"
                     print(f"✅ Usando transcripción propia ({len(blocks)} bloques)")

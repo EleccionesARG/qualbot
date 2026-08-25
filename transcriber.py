@@ -138,12 +138,12 @@ def hablantes_sin_nombre(blocks):
     return sorted(conteo.items(), key=lambda kv: -kv[1])
 
 
-def map_speaker_names(blocks, readai_blocks, brief=""):
+def map_speaker_names(blocks, readai_blocks, brief="", roster=None):
     """Renombra 'Hablante N' a los nombres reales, usando la transcripción
     nombrada de Read.ai y/o el brief del equipo de investigación.
 
     Si algo falla, devuelve los bloques con las etiquetas genéricas."""
-    if not readai_blocks and not brief:
+    if not readai_blocks and not brief and not roster:
         return blocks
     try:
         import anthropic
@@ -157,6 +157,18 @@ def map_speaker_names(blocks, readai_blocks, brief=""):
             samples_b = _samples_by_speaker(readai_blocks)
             reference += ("\n=== SAME MEETING, transcribed by another tool that knows "
                           "the participants' names (samples per speaker) ===\n" + fmt(samples_b))
+        if roster:
+            reference += (
+                "\n=== ZOOM ATTENDANCE LIST — who was actually in the room ===\n"
+                + ", ".join(roster) +
+                "\nThis list comes from Zoom itself and is ground truth for WHO was present "
+                "and under WHAT name. It overrides the names in the research team notes when "
+                "they disagree: people are often recruited under one name and join under "
+                "another (a middle name, a nickname, a full legal name). Match by profile — "
+                "city, occupation, age — and use the name from THIS list.\n"
+                "Two caveats: some people on this list never speak (silent observers, "
+                "technical staff, client-side listeners), so expect fewer voices than names; "
+                "and the host may appear twice if they reconnected.")
         if brief:
             reference += ("\n=== RESEARCH TEAM NOTES (participants and context) ===\n"
                           + brief[:3000])
