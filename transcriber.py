@@ -252,3 +252,131 @@ def map_speaker_names(blocks, readai_blocks, brief="", roster=None):
         notify_error("map_speaker_names", e, traceback.format_exc())
         print(f"⚠️  No se pudieron mapear nombres, quedan etiquetas genéricas: {e}")
         return blocks
+
+
+# ── Correcciones de nombre declaradas en el brief ─────────────────────────────
+
+ALIAS_SECCION = "CORRECCIONES DE NOMBRE"
+ALIAS_LINEA_RE = re.compile(r"^\s*(.+?)\s*(?:->|→|=)\s*(.+?)\s*$")
+
+
+def _alias_del_brief(brief):
+    """Lee la sección CORRECCIONES DE NOMBRE del brief: {como_sale: como_va}.
+
+    Es la red para cuando el nombre del Zoom no es el de la persona (tiles
+    cruzados, la moderadora entrando desde la cuenta de otro). El mapeo de
+    hablantes trata la lista de Zoom como verdad, así que si Zoom miente hace
+    falta decírselo a mano."""
+    if not brief:
+        return {}
+    i = brief.find(ALIAS_SECCION)
+    if i < 0:
+        return {}
+    alias = {}
+    for linea in brief[i + len(ALIAS_SECCION):].split("\n"):
+        if not linea.strip():
+            continue
+        if linea.strip().isupper() and "->" not in linea and "=" not in linea:
+            break  # empezó la sección siguiente
+        m = ALIAS_LINEA_RE.match(linea)
+        if m and m.group(1) and m.group(2):
+            alias[m.group(1).strip()] = m.group(2).strip()
+    return alias
+
+
+def aplicar_correcciones_nombre(blocks, brief=""):
+    """Renombra hablantes según CORRECCIONES DE NOMBRE. Devuelve lo aplicado."""
+    alias = _alias_del_brief(brief)
+    if not alias:
+        return blocks, {}
+    aplicados = {}
+    for b in blocks:
+        spk = b.get("speaker") or {}
+        nombre = str(spk.get("name", ""))
+        if nombre in alias:
+            spk["name"] = alias[nombre]
+            aplicados[nombre] = alias[nombre]
+    if aplicados:
+        print(f"🪪 Correcciones de nombre del brief: {aplicados}")
+    return blocks, aplicados
+
+
+# ── Recorte de la recepción previa a la apertura ──────────────────────────────
+
+# La apertura de la moderadora siempre trae el encuadre: bienvenida, "no hay
+# respuestas correctas ni incorrectas", grabación, confidencialidad. Eso marca
+# dónde empieza el grupo; todo lo anterior es sala de espera (chequeos de audio,
+# saludos de la anfitriona, gente entrando).
+APERTURA_RE = re.compile(
+    r"respuestas?\s+(?:correctas|incorrectas)"
+    r"|(?:correct|right)\s+or\s+(?:incorrect|wrong)\s+answers"
+    r"|voy a ser (?:la|el) moderador"
+    r"|(?:i'm|i am) going to be the moderator"
+    r"|vamos a (?:arrancar|empezar|comenzar) con,? ?(?:la|con la) conversación",
+    re.I)
+
+APERTURA_PROMPT = """Below are the first blocks of a focus-group transcript (Spanish), numbered.
+
+The recording starts before the group does: audio checks, the host letting people in, greetings, technical problems. Then the MODERATOR opens the session — she welcomes the group, explains the dynamic (there are no right or wrong answers), mentions the recording and confidentiality, and moves into the round of introductions.
+
+Return the index of the block where that opening STARTS — the first block of the moderator's opening speech, not the greetings before it and not the round of names after it.
+
+Respond ONLY with JSON: {{"indice": N}}
+
+=== BLOCKS ===
+{muestras}"""
+
+
+def _apertura_por_llm(blocks, ventana):
+    """Índice del bloque de apertura según el modelo. None si no se puede."""
+    try:
+        import anthropic
+        from config import TRANSLATION_MODEL
+
+        muestras = "\n".join(
+            f"[{i}] {(b.get('speaker') or {}).get('name', '?')}: "
+            f"{(b.get('words') or b.get('text') or '')[:260]}"
+            for i, b in enumerate(blocks[:ventana]))
+        client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+        resp = client.messages.create(
+            model=TRANSLATION_MODEL,
+            max_tokens=200,
+            output_config={"effort": "low"},
+            messages=[{"role": "user",
+                       "content": APERTURA_PROMPT.format(muestras=muestras)}],
+        )
+        raw = "".join(b.text for b in resp.content if b.type == "text").strip()
+        raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw)
+        i = int(json.loads(raw).get("indice", -1))
+        return i if 0 <= i < ventana else None
+    except Exception as e:
+        print(f"⚠️  No se pudo detectar la apertura con el modelo: {e}")
+        return None
+
+
+def recortar_apertura(blocks, ventana=140):
+    """Descarta todo lo anterior a la apertura de la moderadora.
+
+    Devuelve (blocks_recortados, t0, descartados). t0 es el inicio real de la
+    grabación: se lo pasa al generador de transcripciones para que los [MM:SS]
+    sigan siendo del reloj de la reunión y sirvan para buscar en el video.
+
+    Si no encuentra la apertura no recorta nada — mejor un documento con sala
+    de espera que uno que arranca en el medio de la charla."""
+    starts = [int(b.get("start_time", 0) or 0) for b in blocks]
+    t0 = min((s for s in starts if s > 0), default=0)
+    if len(blocks) < 5:
+        return blocks, t0, 0
+
+    corte = next((i for i, b in enumerate(blocks[:ventana])
+                  if APERTURA_RE.search(b.get("words") or b.get("text") or "")), None)
+    if corte is None:
+        corte = _apertura_por_llm(blocks, min(ventana, len(blocks)))
+    if not corte:  # 0 o None: no hay nada que recortar
+        if corte is None:
+            print("⚠️  No se detectó la apertura — la transcripción sale entera")
+        return blocks, t0, 0
+
+    primero = (blocks[corte].get("words") or blocks[corte].get("text") or "")[:80]
+    print(f"✂️  Recepción recortada: {corte} bloques. Arranca en: {primero}...")
+    return blocks[corte:], t0, corte

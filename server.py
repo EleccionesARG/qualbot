@@ -311,12 +311,14 @@ def _regenerate_outputs(d):
         u = upload_report(pdf_path, f"QualBot_Integrado_{topic}_{session_id}.pdf")
         print(f"✅ Reporte integrado (regen) → Drive: {u}")
         entregados = [("Análisis ES", u)]
-        entregados += _generate_spanish_transcript(session_id, topic, d["date"], d["blocks"])
+        entregados += _generate_spanish_transcript(session_id, topic, d["date"],
+                                                   d["blocks"], t0=d.get("t0"))
         if ENGLISH_MODE:
             entregados += _generate_english_outputs(session_id, topic, d["date"],
                                                     d["speakers"], d["topics"],
                                                     d["summary"], d["analysis"],
-                                                    d["url"], d["blocks"])
+                                                    d["url"], d["blocks"],
+                                                    t0=d.get("t0"))
         from transcriber import hablantes_sin_nombre
         _avisar_grupo_listo(f"{topic} (regenerado)", entregados, "desde caché",
                             len(d.get("blocks") or []), [],
@@ -663,6 +665,15 @@ def process_zoom(data):
                 print("⚠️  Falló la transcripción propia — se usa la de Read.ai")
                 _notify_error(f"transcriber / {meeting_topic}", e, tb)
 
+        # 3.6 Nombres corregidos a mano (CORRECCIONES DE NOMBRE del brief) y
+        # recorte de la recepción: todo lo que sale de acá —análisis y las dos
+        # transcripciones— arranca en la apertura de la moderadora, no en la
+        # sala de espera. t0 guarda el inicio real de la grabación para que los
+        # [MM:SS] sigan siendo del reloj de la reunión.
+        from transcriber import aplicar_correcciones_nombre, recortar_apertura
+        blocks, _renombrados = aplicar_correcciones_nombre(blocks, brief=brief)
+        blocks, t0_reunion, _recortados = recortar_apertura(blocks)
+
         # 4. UN SOLO llamado a Claude con texto + video
         print("🧠 Análisis integrado texto + video...")
         analysis = analyze_integrated(meeting_topic, speakers, blocks, summary,
@@ -681,6 +692,7 @@ def process_zoom(data):
             "session_id": session_id, "topic": meeting_topic, "date": date,
             "speakers": speakers, "topics": topics, "summary": summary,
             "url": url, "analysis": analysis, "blocks": blocks,
+            "t0": t0_reunion,
         })
 
         # 5. PDF y Drive
@@ -692,18 +704,21 @@ def process_zoom(data):
         entregados = [("Análisis ES", drive_url)]
 
         # 5.5 Transcripción en castellano (verbatim del transcriptor)
-        entregados += _generate_spanish_transcript(session_id, meeting_topic, date, blocks)
+        entregados += _generate_spanish_transcript(session_id, meeting_topic, date,
+                                                   blocks, t0=t0_reunion)
 
         # 6. Modo inglés: PDF EN + transcripción traducida (QUALBOT_LANG=en)
         from config import ENGLISH_MODE
         if ENGLISH_MODE:
             entregados += _generate_english_outputs(session_id, meeting_topic, date,
                                                     speakers, topics, summary,
-                                                    analysis, url, blocks)
+                                                    analysis, url, blocks,
+                                                    t0=t0_reunion)
 
         from transcriber import hablantes_sin_nombre
         _avisar_grupo_listo(meeting_topic, entregados, fuente_transcripcion,
-                            len(blocks), correcciones, hablantes_sin_nombre(blocks))
+                            len(blocks), correcciones, hablantes_sin_nombre(blocks),
+                            recortados=_recortados, renombrados=_renombrados)
 
         try:
             os.remove(video_path)
@@ -719,7 +734,7 @@ def process_zoom(data):
         _notify_error(f"process_zoom / {meeting_topic}", e, tb)
 
 
-def _generate_spanish_transcript(session_id, topic, date, blocks):
+def _generate_spanish_transcript(session_id, topic, date, blocks, t0=None):
     """Sube la transcripción en castellano tal como la devolvió el transcriptor.
 
     Es el verbatim crudo del grupo: mismo origen que la versión en inglés, así
@@ -731,8 +746,9 @@ def _generate_spanish_transcript(session_id, topic, date, blocks):
     try:
         from report_generator import generate_transcript_document
         from drive_uploader import upload_report
-        doc_path = generate_transcript_document(session_id, topic, date, blocks, lang="es")
-        u = upload_report(doc_path, f"QualBot_Transcript_{topic}_{session_id}_ES.pdf")
+        doc_path = generate_transcript_document(session_id, topic, date, blocks,
+                                                lang="es", t0=t0)
+        u = upload_report(doc_path, f"Transcripcion_{topic}_{session_id}_ES.pdf")
         print(f"✅ Transcripción ES → Drive: {u}")
         return [("Transcripción ES", u)]
     except Exception as e:
@@ -743,10 +759,17 @@ def _generate_spanish_transcript(session_id, topic, date, blocks):
 
 
 def _avisar_grupo_listo(topic, entregados, fuente, n_bloques, correcciones,
-                        sin_nombre=()):
+                        sin_nombre=(), recortados=0, renombrados=None):
     """Aviso final: qué quedó en Drive, con links, y con qué motor se transcribió."""
     lineas = [f"✅ {topic} — listo",
               f"Transcripción: {fuente} · {n_bloques} bloques"]
+    if recortados:
+        lineas.append(f"Recepción recortada: {recortados} bloques previos a la apertura")
+    else:
+        lineas.append("⚠️ No se detectó la apertura — la transcripción sale entera")
+    if renombrados:
+        detalle = ", ".join(f"{k} → {v}" for k, v in renombrados.items())
+        lineas.append(f"Nombres corregidos por brief: {detalle}")
     if correcciones:
         lineas.append(f"Validador: {len(correcciones)} citas corregidas")
     if sin_nombre:
@@ -778,7 +801,7 @@ def _generate_translation_notes(session_id, topic, date, notas):
 
 
 def _generate_english_outputs(session_id, topic, date, speakers, topics,
-                              summary, analysis, url, blocks):
+                              summary, analysis, url, blocks, t0=None):
     """Genera y sube el PDF EN y la transcripción traducida. Cada artefacto
     falla de forma aislada (alerta a Slack) — los PDFs ES ya están en Drive.
 
@@ -811,8 +834,9 @@ def _generate_english_outputs(session_id, topic, date, speakers, topics,
         try:
             print(f"🌐 Traduciendo transcripción ({len(blocks)} bloques)...")
             blocks_en, notas = translate_transcript_blocks(blocks, context=session_context)
-            doc_path = generate_transcript_document(session_id, topic, date, blocks_en, lang="en")
-            u = upload_report(doc_path, f"QualBot_Transcript_{topic}_{session_id}_EN.pdf")
+            doc_path = generate_transcript_document(session_id, topic, date, blocks_en,
+                                                    lang="en", t0=t0)
+            u = upload_report(doc_path, f"Transcript_{topic}_{session_id}_EN.pdf")
             print(f"✅ Transcripción EN → Drive: {u}")
             transcript_en_text = format_translated_transcript(blocks_en)
             entregados.append(("Transcripción EN", u))

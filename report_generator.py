@@ -73,7 +73,9 @@ LABELS = {
         "recomendaciones": "Recomendaciones", "justificacion": "Justificación",
         "proximos_pasos": "Próximos pasos",
         "nota_metodologica": "Nota metodológica",
-        "transcript_title": "QualBot — Transcripción de Focus Group",
+        "transcript_title": "Transcripción",
+        "transcript_lang": "Español",
+        "transcript_file": "Transcripcion",
     },
     "en": {
         "report_title": "QualBot — Focus Group Report",
@@ -127,7 +129,9 @@ LABELS = {
         "recomendaciones": "Recommendations", "justificacion": "Rationale",
         "proximos_pasos": "Next steps",
         "nota_metodologica": "Methodological note",
-        "transcript_title": "QualBot — Focus Group Transcript",
+        "transcript_title": "Transcript",
+        "transcript_lang": "English",
+        "transcript_file": "Transcript",
     },
 }
 
@@ -577,16 +581,21 @@ def generate_pdf_report(session_id, title, date, speakers, topics, summary,
     return path
 
 
-def generate_transcript_document(session_id, title, date, translated_blocks, lang="en"):
+def generate_transcript_document(session_id, title, date, translated_blocks,
+                                 lang="en", t0=None):
     """PDF con la transcripción: [MM:SS] Speaker + párrafo por bloque.
 
     Acepta dos formas de bloque: la traducida
     ({"speaker": str, "start_time": ms, "text_en": str}) y la cruda del
     transcriptor ({"speaker": {"name": str}, "start_time": ms, "words": str}),
-    para poder emitir también la transcripción en castellano."""
+    para poder emitir también la transcripción en castellano.
+
+    t0: inicio real de la grabación en ms. Se pasa cuando los bloques vienen
+    recortados (ver recortar_apertura) para que los [MM:SS] sigan siendo del
+    reloj de la reunión y se puedan buscar en el video de Zoom."""
     L = LABELS.get(lang, LABELS["en"])
     os.makedirs("reportes", exist_ok=True)
-    path = f"reportes/QualBot_Transcript_{session_id}_{lang}.pdf"
+    path = f"reportes/{L['transcript_file']}_{session_id}_{lang}.pdf"
 
     doc = SimpleDocTemplate(path, pagesize=A4,
           rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
@@ -597,14 +606,15 @@ def generate_transcript_document(session_id, title, date, translated_blocks, lan
                  spaceBefore=8, spaceAfter=2)
 
     story = [
-        Paragraph(L["transcript_title"], S_title),
-        Paragraph(f"{title}  |  {date}", S_sub),
+        Paragraph(f"{L['transcript_title']} — {title}", S_title),
+        Paragraph(f"{date}  ·  {L['transcript_lang']}", S_sub),
         HRFlowable(width="100%", thickness=1, color=C_ACCENT, spaceAfter=10),
     ]
 
     # Read.ai manda start_time como época Unix en ms — llevar a tiempo relativo
     starts = [int(b.get("start_time", 0) or 0) for b in translated_blocks]
-    t0 = min((s for s in starts if s > 0), default=0)
+    if t0 is None:
+        t0 = min((s for s in starts if s > 0), default=0)
 
     for b, start in zip(translated_blocks, starts):
         rel = max(0, start - t0)
@@ -618,7 +628,7 @@ def generate_transcript_document(session_id, title, date, translated_blocks, lan
 
     story.append(Spacer(1, 16))
     story.append(HRFlowable(width="100%", thickness=0.5, color=C_MUTED, spaceAfter=6))
-    story.append(Paragraph(f"QualBot  |  {datetime.now().strftime('%m/%d/%Y %H:%M')}",
+    story.append(Paragraph(datetime.now().strftime('%d/%m/%Y %H:%M'),
                            st("F", fontSize=8, textColor=C_MUTED, alignment=TA_CENTER)))
 
     doc.build(story)
