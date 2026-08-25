@@ -90,17 +90,44 @@ def _label(speaker_id):
 
 # ── Mapeo de nombres reales usando la transcripción de Read.ai ─────────────────
 
-MAPPING_PROMPT = """Below is a transcript of a meeting (in Spanish) produced by a high-quality engine that labels speakers generically ({labels}), plus reference material that reveals the participants' real names.
+MAPPING_PROMPT = """Below is a transcript of a meeting (in Spanish) produced by a high-quality engine that labels speakers generically ({labels}), plus reference material that reveals who was in the room.
 
-Match each generic label to a real participant name, comparing what each speaker says and when (self-introductions, how others address them, roles described in the notes). Respond ONLY with a JSON object mapping every label to a name, e.g. {{"Hablante 1": "Juan", "Hablante 2": "Ana"}}. Prefer real person names over usernames or generic labels when the reference material gives both.
+Your job: map each generic label to the CANONICAL name of that person.
 
-Important: the engine that produced these labels sometimes splits ONE person into two labels when people talk over each other. If there are more labels than people in the room according to the reference material, assume that is what happened: map the extra label to the same name as the voice it most resembles — same speech patterns, same role in the conversation, and note that a person never answers themselves. Two labels mapping to the same name is expected and correct in that case.
+HOW TO CHOOSE THE NAME (this is a client-facing document — naming must be consistent and clean):
+1. If the person is listed in the research team notes, use EXACTLY the name written there, spelling and accents included. Those notes are the naming standard: if they call her "Lucía" and Zoom shows "Adriana Nuñez", the answer is "Lucía".
+2. If the person is NOT in the notes, use their real first name, properly capitalized: "belen lopez" -> "Belén", "iPhone de Oriana Raquel" -> "Oriana", "ABEL" -> "Abel". Add a surname only if two people share a first name.
+3. NEVER output a device name, a handle, a name in all-lowercase or ALL-CAPS, or anything with a device prefix like "iPhone de".
 
-Map a label to itself only as a last resort, when you genuinely cannot tell who it is — a label left generic means its quotes end up unattributed.
+HOW TO WORK OUT WHO IS WHO:
+- The Zoom attendance list tells you who was present and which device belongs to whom. Use it to resolve identity — not to choose how the name is written.
+- Match by what people say about themselves: the city they live in, their job, their age, how others address them.
+- The engine sometimes splits one person into two labels when people talk over each other. Merge two labels ONLY when everything fits: same voice, same self-description, and they never answer each other. Two labels that name different cities or different jobs are two different people — in a focus group several young men can sound alike, so keep them apart unless the evidence is clear.
+- Some people on the attendance list never speak (silent observers, technical staff, client-side listeners) and the host may appear twice after reconnecting. Fewer voices than names is expected.
+
+Respond ONLY with a JSON object mapping every label to a canonical name, e.g. {{"Hablante 1": "Josefina", "Hablante 2": "Lucía"}}. Map a label to itself only as a last resort, when you genuinely cannot tell who it is — a label left generic means its quotes end up unattributed in the client report.
 
 === TRANSCRIPT (samples per speaker) ===
 {samples_a}
 {reference}"""
+
+
+DEVICE_RE = re.compile(r"^(iphone|ipad|android|galaxy|moto|samsung|tecno|celular|usuario|user)\b"
+                       r"[\s\-]*(de[l]?\s+)?", re.I)
+
+
+def _nombre_limpio(nombre):
+    """Red de seguridad sobre lo que devuelve el mapeo.
+
+    Aunque el prompt lo pide, conviene no publicar 'iphone de oriana' ni
+    'BELEN LOPEZ' en un documento que lee el cliente."""
+    n = DEVICE_RE.sub("", str(nombre)).strip(" -_")
+    n = re.sub(r"\s+", " ", n)
+    if not n:
+        return str(nombre)
+    if n.isupper() or n.islower():
+        n = " ".join(p.capitalize() for p in n.split())
+    return n
 
 
 def _rel_mmss(ms, t0):
@@ -190,6 +217,8 @@ def map_speaker_names(blocks, readai_blocks, brief="", roster=None):
         if not isinstance(mapping, dict):
             raise ValueError("mapping no es un dict")
         print(f"🪪 Mapeo de hablantes: {mapping}")
+        mapping = {k: _nombre_limpio(v) for k, v in mapping.items()}
+        print(f"🪪 Nombres finales: {sorted(set(mapping.values()))}")
         for b in blocks:
             name = b.get("speaker", {}).get("name", "")
             if mapping.get(name):
