@@ -1,8 +1,11 @@
 import os
 import requests
 
-def get_zoom_token():
-    """Obtiene access token de Zoom via Server-to-Server OAuth"""
+def get_zoom_token_info():
+    """Respuesta completa del token: incluye los scopes que Zoom le concedió.
+
+    Sirve para verificar desde afuera si un permiso nuevo quedó activo y si las
+    credenciales de Railway apuntan a la app que uno cree."""
     account_id    = os.environ["ZOOM_ACCOUNT_ID"]
     client_id     = os.environ["ZOOM_CLIENT_ID"]
     client_secret = os.environ["ZOOM_CLIENT_SECRET"]
@@ -13,7 +16,12 @@ def get_zoom_token():
         auth=(client_id, client_secret)
     )
     resp.raise_for_status()
-    return resp.json()["access_token"]
+    return resp.json()
+
+
+def get_zoom_token():
+    """Obtiene access token de Zoom via Server-to-Server OAuth"""
+    return get_zoom_token_info()["access_token"]
 
 
 def download_recording(download_url, output_path, download_token=""):

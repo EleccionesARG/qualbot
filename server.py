@@ -210,7 +210,7 @@ def padron():
         return jsonify({"error": "falta ?key="}), 401
     import requests as req
     from datetime import timedelta
-    from zoom_downloader import get_meeting_participants
+    from zoom_downloader import get_meeting_participants, get_zoom_token_info
     topic_query = request.args.get("topic", "").lower()
     if not topic_query:
         return jsonify({"error": "Falta ?topic="}), 400
@@ -230,7 +230,9 @@ def padron():
                         "padron": nombres,
                         "uuid": match.get("uuid"), "id": match.get("id"),
                         "detalle": getattr(get_meeting_participants,
-                                           "ultimo_detalle", [])}), 200
+                                           "ultimo_detalle", []),
+                        "scopes_del_token": sorted(
+                            (get_zoom_token_info().get("scope") or "").split())}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
