@@ -188,6 +188,38 @@ def _brief_para_mapeo(brief, limite=7000, por_seccion=2600):
     return texto[:limite]
 
 
+ROL_RE = re.compile(
+    r"\b([A-ZÁÉÍÓÚÑ][\wÁÉÍÓÚÑáéíóúñ]+)\s*\(\s*"
+    r"(Moderadora|Moderador|Recepción|Recepcion|Coordinación|Coordinacion)\s*\)")
+
+
+def roles_del_brief(brief):
+    """Nombre → 'Nombre (Rol)', según cómo el brief pide que aparezcan.
+
+    El rol del equipo tiene que salir en cada intervención: es lo que le permite
+    al cliente distinguir de un vistazo quién modera y quién participa. Pedirlo
+    en el prompt no alcanza —se pierde—, así que se aplica después."""
+    return {m.group(1): f"{m.group(1)} ({m.group(2)})"
+            for m in ROL_RE.finditer(brief or "")}
+
+
+def aplicar_roles(blocks, brief):
+    """Le pega el rol al nombre del equipo en cada bloque. Idempotente."""
+    roles = roles_del_brief(brief)
+    if not roles:
+        return blocks
+    tocados = 0
+    for b in blocks:
+        spk = b.get("speaker") or {}
+        nombre = str(spk.get("name", ""))
+        if nombre in roles:
+            spk["name"] = roles[nombre]
+            tocados += 1
+    if tocados:
+        print(f"🎓 Roles del equipo aplicados en {tocados} bloques: {sorted(roles.values())}")
+    return blocks
+
+
 def map_speaker_names(blocks, readai_blocks, brief="", roster=None):
     """Renombra 'Hablante N' a los nombres reales, usando la transcripción
     nombrada de Read.ai y/o el brief del equipo de investigación.
@@ -246,7 +278,7 @@ def map_speaker_names(blocks, readai_blocks, brief="", roster=None):
             name = b.get("speaker", {}).get("name", "")
             if mapping.get(name):
                 b["speaker"]["name"] = str(mapping[name])
-        return blocks
+        return aplicar_roles(blocks, brief)
     except Exception as e:
         import traceback
         notify_error("map_speaker_names", e, traceback.format_exc())

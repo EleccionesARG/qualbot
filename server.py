@@ -412,6 +412,9 @@ def _regenerate_outputs(d):
 
         session_id, topic = d["session_id"], d["topic"]
         print(f"♻️  Regenerando reportes de '{topic}' desde caché...")
+        # Los bloques cacheados pueden ser previos a una corrección del brief
+        from transcriber import aplicar_roles
+        d["blocks"] = aplicar_roles(d.get("blocks") or [], load_brief(topic))
         pdf_path = generate_pdf_report(session_id, topic, d["date"], d["speakers"],
                                        d["topics"], d["summary"], d["analysis"], d["url"])
         u = upload_report(pdf_path, f"QualBot_Integrado_{topic}_{session_id}.pdf")
