@@ -185,6 +185,112 @@ def health():
             if ENGLISH_MODE else []),
     }), 200
 
+@app.route("/upload", methods=["GET", "POST"])
+def upload():
+    """Ingesta manual de audio: para los grupos presenciales, que no pasan por Zoom.
+
+    Corre el mismo circuito que una grabación de Zoom salvo el video: Scribe
+    transcribe, el brief pone los nombres, y salen análisis ES, transcripción
+    ES, transcripción EN y notas de traducción."""
+    if not _check_admin_key(request):
+        return "Falta ?key=<QUALBOT_ADMIN_KEY>", 401
+
+    if request.method == "GET":
+        from markupsafe import escape
+        key = request.values.get("key", "")
+        return f"""<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QualBot — Subir audio</title>
+<style>body{{font-family:sans-serif;max-width:640px;margin:2rem auto;padding:0 1rem;color:#1a1a2e}}
+input{{width:100%;font-size:15px;padding:8px;margin-bottom:12px}}
+button{{background:#7c6aff;color:#fff;border:0;padding:10px 24px;font-size:15px;border-radius:6px}}
+.hint{{color:#6b6b8a;font-size:13px}}</style></head><body>
+<h2>QualBot — Subir audio de un grupo presencial</h2>
+<form method="POST" enctype="multipart/form-data" action="/upload?key={escape(key)}">
+<label>Título del grupo (tiene que coincidir con el brief cargado)<br>
+<input type="text" name="topic" placeholder="G9 - Jovenes LLA - AMBA" required></label>
+<label>Archivo de audio<br><input type="file" name="audio" accept="audio/*,video/*" required></label>
+<p class="hint">Se transcribe con ElevenLabs, se le ponen los nombres con el brief y salen los
+cuatro documentos. Sin video no hay análisis de imagen.</p>
+<button type="submit">Subir y procesar</button></form></body></html>"""
+
+    topic = (request.form.get("topic") or "").strip()
+    archivo = request.files.get("audio")
+    if not topic or not archivo:
+        return jsonify({"error": "Falta topic o audio"}), 400
+
+    os.makedirs("recordings", exist_ok=True)
+    session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ext = os.path.splitext(archivo.filename or "")[1].lower() or ".m4a"
+    audio_path = f"recordings/upload_{session_id}{ext}"
+    archivo.save(audio_path)
+    mb = os.path.getsize(audio_path) / (1024 * 1024)
+    print(f"📤 Audio recibido: {topic} → {audio_path} ({mb:.1f} MB)")
+
+    threading.Thread(target=_procesar_audio_subido,
+                     args=(topic, audio_path, session_id), daemon=True).start()
+    return jsonify({"status": "procesando", "topic": topic,
+                    "session_id": session_id, "mb": round(mb, 1)}), 200
+
+
+def _procesar_audio_subido(topic, audio_path, session_id):
+    """Mismo circuito que process_zoom, sin video."""
+    try:
+        from transcriber import (transcriber_enabled, transcribe_recording,
+                                 map_speaker_names, hablantes_sin_nombre)
+        from analyzer import analyze_transcript
+        from validator import verify_quotes
+        from report_generator import generate_pdf_report
+        from drive_uploader import upload_report
+        from config import ENGLISH_MODE
+
+        _notify(f"🎙️ {topic}\nAudio recibido, empiezo a transcribir. Esto tarda un rato.")
+
+        if not transcriber_enabled():
+            raise RuntimeError("ELEVENLABS_API_KEY no configurada: sin transcriptor no hay nada que hacer")
+
+        brief = load_brief(topic)
+        print(f"📝 Brief: {len(brief)} chars" if brief else "⚠️  Sin brief para este grupo")
+
+        blocks = transcribe_recording(audio_path, num_speakers=None)
+        blocks = map_speaker_names(blocks, [], brief=brief)
+        fuente = "ElevenLabs Scribe (audio subido)"
+        print(f"✅ {len(blocks)} bloques transcriptos")
+
+        speakers = sorted({(b.get("speaker") or {}).get("name", "") for b in blocks} - {""})
+        fecha = datetime.now().strftime("%Y-%m-%d")
+
+        print("🧠 Análisis de texto...")
+        analysis = analyze_transcript(topic, speakers, blocks, "", [], brief=brief)
+        analysis, correcciones = verify_quotes(analysis, blocks)
+
+        _save_analysis_cache(topic, {
+            "session_id": session_id, "topic": topic, "date": fecha,
+            "speakers": speakers, "topics": [], "summary": "", "url": "",
+            "analysis": analysis, "blocks": blocks,
+        })
+
+        pdf_path = generate_pdf_report(session_id, topic, fecha, speakers, [], "",
+                                       analysis, "")
+        u = upload_report(pdf_path, f"QualBot_Integrado_{topic}_{session_id}.pdf")
+        entregados = [("Análisis ES", u)]
+        entregados += _generate_spanish_transcript(session_id, topic, fecha, blocks)
+        if ENGLISH_MODE:
+            entregados += _generate_english_outputs(session_id, topic, fecha, speakers,
+                                                    [], "", analysis, "", blocks)
+
+        _avisar_grupo_listo(topic, entregados, fuente, len(blocks), correcciones,
+                            hablantes_sin_nombre(blocks))
+        try:
+            os.remove(audio_path)
+        except Exception:
+            pass
+    except Exception as e:
+        import traceback; tb = traceback.format_exc()
+        print(tb)
+        _notify_error(f"upload / {topic}", e, tb)
+
+
 @app.route("/errores", methods=["GET"])
 def errores():
     """Últimos errores registrados (30 días). La red de seguridad si el push falla."""
